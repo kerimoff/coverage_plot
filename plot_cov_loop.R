@@ -27,7 +27,9 @@ option_list <- list(
   make_option(c("-u", "--usage_matrix_norm"), type="character", default=NULL,
               help="Path to the normalised usage matrix", metavar = "type"),
   make_option(c("-a", "--all_summ_stats"), type="character", default=NULL,
-              help="Path to the full nominal summary statistics", metavar = "type")
+              help="Path to the full gene nominal summary statistics", metavar = "type"),
+  make_option(c("-e", "--exon_summ_stats"), type="character", default=NULL,
+              help="Path to the full exon nominal summary statistics", metavar = "type")
 )
 
 message(" ## Parsing options")
@@ -37,6 +39,7 @@ message(" ## Loading libraries: devtools, dplyr, SummarizedExperiment, cqn, data
 suppressPackageStartupMessages(library("dplyr"))
 suppressPackageStartupMessages(library("SummarizedExperiment"))
 suppressPackageStartupMessages(library("readr"))
+suppressPackageStartupMessages(library("ggplot2"))
 library(seqminer)
 
 make_transcript_exon_granges <- function(gff, transcript_ids) {
@@ -107,7 +110,38 @@ make_connected_components_from_cs <- function(susie_all_df, z_threshold = 3, cs_
   return(cc_df)
 }
 
-
+generate_beta_plot <- function(exon_plot_data_loc, nom_exon_cc_sumstats_filt_loc){
+  exon_exp_rescaled_exons <- exon_plot_data_loc$transcript_struct_df %>% 
+    dplyr::filter(transcript_id == "exon_exp") %>% 
+    dplyr::mutate(exon_row_num = dplyr::row_number()) %>%
+    dplyr::mutate(exon_rescaled_center = round((end+start)/2)) %>%
+    dplyr::mutate(beta_wrap_label = "BETA with SE") %>%
+    dplyr::left_join(nom_exon_cc_sumstats_filt_loc %>% dplyr::select(exon_row_num, molecular_trait_id, beta, se, se_top, se_bottom), by = "exon_row_num") %>% 
+    dplyr::mutate(is_lead_exon_qtl = if_else(abs(beta) == max(abs(beta)), 1, 0.5)) 
+  
+  beta_plot <- ggplot(exon_exp_rescaled_exons) + 
+    ggplot2::geom_blank() +
+    ggplot2::geom_hline(yintercept = 0, alpha = 0.5, color = "lightgrey") +
+    ggplot2::geom_point(aes(x=exon_rescaled_center, y=beta, alpha = is_lead_exon_qtl), size=1) + 
+    ggplot2::geom_point(aes(x=exon_rescaled_center, y=se_top, alpha = is_lead_exon_qtl), shape=23, fill="blue", color="darkred", size=1) +
+    ggplot2::geom_point(aes(x=exon_rescaled_center, y=se_bottom, alpha = is_lead_exon_qtl), shape=23, fill="blue", color="darkred", size=1) +
+    ggplot2::facet_grid(beta_wrap_label~.) +
+    ggplot2::theme_light() +
+    ggplot2::scale_x_continuous(expand = c(0,0)) + 
+    ggplot2::ylab("Effect size") +
+    coord_cartesian(xlim = exon_plot_data_loc$limits) +
+    theme(plot.margin=unit(c(0,1,0,1),"line"), 
+          axis.title.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          legend.position="none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          strip.text.y = element_text(colour = "grey10"),
+          strip.background = element_rect(fill = "grey85")) 
+  
+  return(beta_plot)
+}
 
 
 #Debugging
@@ -118,13 +152,15 @@ if (FALSE) {
   opt$s = "/Users/kerimov/Work/GitHub/SampleArcheology/studies/cleaned/Alasoo_2018.tsv"
   opt$p = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/leafcutter_metadata.txt.gz"
   opt$q = "macrophage_naive"
-  opt$o = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/plots"
+  opt$o = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/plots_beta"
   opt$v = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/vcf/Alasoo_2018.filtered.vcf.gz"
   opt$b = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/bigwig/"
   opt$m = "/Users/kerimov/Work/temp_files/leafcutter_data/MANE_transcript_gene_map.txt"
   opt$g = "/Users/kerimov/Work/temp_files/leafcutter_data/Homo_sapiens.GRCh38.105.gtf"
   opt$u = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/qtl_group_split_norm/Alasoo_2018.macrophage_naive.tsv"
   opt$a = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/sumstats/Alasoo_2018_leafcutter_macrophage_naive.all.tsv.gz"
+  opt$e = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/sumstats/Alasoo_2018_exon_macrophage_naive.all.tsv.gz"
+  index = 1
 }
 
 susie_file_path = opt$f
@@ -139,6 +175,7 @@ mane_transcript_gene_map_file = opt$m
 gtf_file_path = opt$g
 norm_usage_matrix_path = opt$u
 nominal_sumstats_path = opt$a
+nominal_exon_sumstats_path = opt$e
 
 message("######### Options: ######### ")
 message("######### Working Directory  : ", getwd())
@@ -154,6 +191,7 @@ message("######### mane_map_file_path : ", mane_transcript_gene_map_file)
 message("######### gtf_file_path      : ", gtf_file_path)
 message("######### norm_usage_matrix  : ", norm_usage_matrix_path)
 message("######### nominal_sumstats   : ", nominal_sumstats_path)
+message("######### exon_sumstats      : ", nominal_exon_sumstats_path)
 
 message(" ## Reading GTF file")
 gtf_ref <- rtracklayer::import(gtf_file_path, 
@@ -185,7 +223,7 @@ if (is.null(study_name)) {
 
 message(" ## Building Connected-Components")
 susie_naive <- susie_naive %>% dplyr::mutate(cs_uid = paste0(study_name, "%", cs_id))
-susie_naive_cc <- make_connected_components_from_cs(susie_all_df = susie_naive)
+susie_naive_cc <- make_connected_components_from_cs(susie_all_df = susie_naive, cs_size_threshold = 50)
 
 susie_naive_filt_cc <- susie_naive %>% 
   dplyr::filter(molecular_trait_id %in% susie_naive_cc$molecular_trait_id) %>% 
@@ -203,19 +241,22 @@ susie_high_pip_with_gene <- susie_naive_high_pip_var %>%
   dplyr::filter(!is.na(gene_id))
 
 message(" ## Reading nominal summary statistics of ", nrow(susie_high_pip_with_gene), " variants.")
+sumstat_colnames <- c("molecular_trait_id", "chromosome", "position", 
+                      "ref", "alt", "variant", "ma_samples", "maf", 
+                      "pvalue", "beta", "se", "type", "ac", "an", 
+                      "r2", "molecular_trait_object_id", "gene_id", 
+                      "median_tpm", "rsid")
 variant_regions_ss <- susie_high_pip_with_gene %>% 
   dplyr::select(variant, chromosome, position) %>% 
   dplyr::mutate(region = paste0(chromosome,":", position, "-", position))
 nom_cc_sumstats <- seqminer::tabix.read.table(nominal_sumstats_path, variant_regions_ss$region) 
-colnames(nom_cc_sumstats) <- c("molecular_trait_id", "chromosome", "position", 
-                               "ref", "alt", "variant", "ma_samples", "maf", 
-                               "pvalue", "beta", "se", "type", "ac", "an", 
-                               "r2", "molecular_trait_object_id", "gene_id", 
-                               "median_tpm", "rsid")
-# nom_cc_sumstats_filt <- nom_cc_sumstats %>% dplyr::group_by(molecular_trait_id) %>% 
-#   dplyr::filter(variant == 
-#   filter(molecular_trait_id ==intron_id_sel, variant %in% ss_oi$variant)
+colnames(nom_cc_sumstats) <- sumstat_colnames
 
+if(!is.null(nominal_exon_sumstats_path)) {
+  message(" ## Reading exon summary statistics")
+  nom_exon_cc_sumstats <- seqminer::tabix.read.table(nominal_exon_sumstats_path, variant_regions_ss$region) 
+  colnames(nom_exon_cc_sumstats) <- sumstat_colnames
+}
 
 message(" ## Starting to plot")
 
@@ -226,6 +267,7 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
   # get all the intons in leafcutter cluster
   cluster_introns <- leafcutter_metadata %>% dplyr::filter(group_id %in% ss_oi$group_id)
   ps_exons <- make_pseudo_exons(df_introns = cluster_introns)
+  ps_exons_cdss <- make_pseudo_exons(leafcutter_metadata %>% filter(phenotype_id %in% ss_oi$molecular_trait_id))
   
   variant_regions_vcf <- ss_oi %>% 
     dplyr::select(variant, chromosome, position) %>% 
@@ -260,26 +302,65 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
     dplyr::mutate(colour_group = as.character(DS)) %>% 
     dplyr::select(sample_id, scaling_factor, bigWig, track_id, colour_group, qtl_group)
   
-  ps_exons_cdss <- make_pseudo_exons(leafcutter_metadata %>% filter(phenotype_id %in% ss_oi$molecular_trait_id))
-  
-  MANE_transcript_oi <- mane_transcript_gene_map %>% dplyr::filter(gene_id %in% ss_oi$gene_id) %>% dplyr::pull(transcript_id)
-  mane_transcript_exons <-  make_transcript_exon_granges(gff = gtf_ref, transcript_ids = MANE_transcript_oi)
-  
+  # Generate the output path 
   path_plt = paste0(output_dir, paste0("/",gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant, "&", ss_oi$gene_id))
   if (!dir.exists(path_plt)){
     dir.create(path_plt, recursive = TRUE)
   }
   
-  plot_rel_height = ifelse(length(ps_exons)+1 <= 5, 3, length(ps_exons)+1) 
-  plt_coverage <- wiggleplotr::plotCoverage(exons = append(ps_exons, mane_transcript_exons), cdss = ps_exons_cdss,
-                                            track_data = track_data_alasoo %>% dplyr::filter(qtl_group==qtl_group_in), 
-                                            heights = c(2, plot_rel_height),
-                                            fill_palette = wiggleplotr::getGenotypePalette(), 
-                                            coverage_type = "line", show_genotype_legend = TRUE)
+  # Extract the QTLs of exons according to gene and variant of interest
+  nom_exon_cc_sumstats_filt <- nom_exon_cc_sumstats %>% 
+    dplyr::filter(variant == ss_oi$variant, molecular_trait_object_id == ss_oi$gene_id) %>% 
+    dplyr::filter(rsid == rsid[1]) %>% # if variant has more than one rsid keep only the first unique rsid 
+    dplyr::mutate(exon_end = as.numeric(gsub(pattern = ".*\\_", replacement = "", x = molecular_trait_id))) %>% 
+    dplyr::mutate(exon_start = gsub(pattern = "_[^_]+$", replacement = "", x = molecular_trait_id)) %>% 
+    dplyr::mutate(exon_start = as.numeric(gsub(pattern = ".*\\_", replacement = "", x = exon_start))) %>% 
+    dplyr::mutate(exon_center = round((exon_start + exon_end) / 2)) %>% 
+    dplyr::mutate(exon_length = abs(exon_start - exon_end) + 1) %>% 
+    dplyr::mutate(exon_row_num = dplyr::row_number()) %>% 
+    dplyr::mutate(se_top = beta + se) %>% 
+    dplyr::mutate(se_bottom = beta - se)
+  
+  exons_to_plot = ps_exons
+  
+  if (nrow(nom_exon_cc_sumstats_filt) > 0) {
+    nom_exon_granges <- list(exon_exp = GenomicRanges::GRanges(
+      seqnames = nom_exon_cc_sumstats_filt$chromosome,
+      ranges = IRanges::IRanges(start = nom_exon_cc_sumstats_filt$exon_start, end = nom_exon_cc_sumstats_filt$exon_end),
+      strand = ifelse(test = ss_oi$strand == 1, yes = "+", no = "-"),
+      mcols = data.frame(exon_id = nom_exon_cc_sumstats_filt$molecular_trait_id, 
+                         gene_id = nom_exon_cc_sumstats_filt$gene_id)))
+    
+    exons_to_plot <- append(exons_to_plot, nom_exon_granges)
+  }
+  
+  
+  plot_rel_height = ifelse(length(ps_exons)+1 <= 5, 3, length(ps_exons)) 
+
+  coverage_plot_data = wiggleplotr::generateCoveragePlotData(exons = exons_to_plot, 
+                                             cdss = ps_exons_cdss, 
+                                             track_data = track_data_alasoo %>% dplyr::filter(qtl_group==qtl_group_in))
+  coverage_plot = wiggleplotr::makeCoveragePlot(coverage_df = coverage_plot_data$coverage_df, 
+                                                limits = coverage_plot_data$limits, 
+                                                alpha = 1, 
+                                                fill_palette = wiggleplotr::getGenotypePalette(), 
+                                                coverage_type = "line", 
+                                                show_genotype_legend = TRUE)
+  
+  exon_plot_data <- wiggleplotr::generateTxStructurePlotData(exons = exons_to_plot,
+                                                             cdss = ps_exons_cdss)
+  exon_plot <- wiggleplotr::plotTranscriptStructure(exons_df = exon_plot_data$transcript_struct_df, limits = exon_plot_data$limits)
+  if (nrow(nom_exon_cc_sumstats_filt) > 0) {
+    beta_plot <- generate_beta_plot(exon_plot_data, nom_exon_cc_sumstats_filt)
+    merged_plot <- cowplot::plot_grid(coverage_plot, beta_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, 3, plot_rel_height), ncol = 1)
+  } else {
+    merged_plot <- cowplot::plot_grid(coverage_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, 3, plot_rel_height), ncol = 1)
+  }
   
   filename_plt = paste0("cov_plot_", gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant, "&", ss_oi$gene_id,".pdf")
-  ggplot2::ggsave(path = path_plt, filename = filename_plt, plot = plt_coverage, device = "pdf", width = 10, height = 8)
+  ggplot2::ggsave(path = path_plt, filename = filename_plt, plot = merged_plot, device = "pdf", width = 10, height = 8)
   
+  # BOXPLOTS START HERE
   norm_exp_df_oi <- norm_exp_df %>% dplyr::filter(phenotype_id %in% cluster_introns$phenotype_id)
   norm_exp_df_oi <- tibble::column_to_rownames(.data = norm_exp_df_oi,var = "phenotype_id")
   norm_exp_df_oi <- norm_exp_df_oi %>% base::t() %>% 
