@@ -240,6 +240,9 @@ susie_high_pip_with_gene <- susie_naive_high_pip_var %>%
   dplyr::left_join(leafcutter_metadata %>% dplyr::select(-chromosome), by = c("molecular_trait_id" = "phenotype_id")) %>% 
   dplyr::filter(!is.na(gene_id))
 
+signal_file_name <- paste0(study_name, "_", qtl_group_in, "_CC_signal_phenotype_ids.txt")
+readr::write_tsv(x = susie_high_pip_with_gene %>% dplyr::select(molecular_trait_id), file = signal_file_name, col_names = F)
+
 message(" ## Reading nominal summary statistics of ", nrow(susie_high_pip_with_gene), " variants.")
 sumstat_colnames <- c("molecular_trait_id", "chromosome", "position", 
                       "ref", "alt", "variant", "ma_samples", "maf", 
@@ -292,11 +295,11 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
   
   bigwig_files <- list.files(bigwig_files_path, full.names = T)
   
-  track_data_alasoo <- data.frame(file_name = (gsub(pattern = paste0(bigwig_files_path, "/"), replacement = "", x = bigwig_files)),
+  track_data_study <- data.frame(file_name = (gsub(pattern = paste0(bigwig_files_path, "/"), replacement = "", x = bigwig_files)),
                                   bigWig = bigwig_files)
-  track_data_alasoo <- track_data_alasoo %>% dplyr::mutate(sample_id = gsub(pattern = ".bigwig", replacement = "", x = file_name))
+  track_data_study <- track_data_study %>% dplyr::mutate(sample_id = gsub(pattern = ".bigwig", replacement = "", x = file_name))
   
-  track_data_alasoo <-track_data_alasoo %>% 
+  track_data_study <-track_data_study %>% 
     dplyr::left_join(var_genotype %>% dplyr::select(sample_id, qtl_group, DS), by = c("sample_id")) %>% 
     dplyr::mutate(scaling_factor = 1, track_id = qtl_group) %>% 
     dplyr::mutate(colour_group = as.character(DS)) %>% 
@@ -339,7 +342,7 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
 
   coverage_plot_data = wiggleplotr::generateCoveragePlotData(exons = exons_to_plot, 
                                              cdss = ps_exons_cdss, 
-                                             track_data = track_data_alasoo %>% dplyr::filter(qtl_group==qtl_group_in))
+                                             track_data = track_data_study %>% dplyr::filter(qtl_group==qtl_group_in))
   coverage_plot = wiggleplotr::makeCoveragePlot(coverage_df = coverage_plot_data$coverage_df, 
                                                 limits = coverage_plot_data$limits, 
                                                 alpha = 1, 
@@ -347,14 +350,20 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
                                                 coverage_type = "line", 
                                                 show_genotype_legend = TRUE)
   
+  coverage_plot_data$coverage_df <- coverage_plot_data$coverage_df[sample(nrow(coverage_plot_data$coverage_df)),]
+  Rds_list <- list(cov_plot_data = coverage_plot_data, ss_oi = ss_oi)
+  
   exon_plot_data <- wiggleplotr::generateTxStructurePlotData(exons = exons_to_plot,
                                                              cdss = ps_exons_cdss)
   exon_plot <- wiggleplotr::plotTranscriptStructure(exons_df = exon_plot_data$transcript_struct_df, limits = exon_plot_data$limits)
+  
+  Rds_list[["exon_plot_data"]] <- exon_plot_data
+  
   if (nrow(nom_exon_cc_sumstats_filt) > 0) {
     beta_plot <- generate_beta_plot(exon_plot_data, nom_exon_cc_sumstats_filt)
     merged_plot <- cowplot::plot_grid(coverage_plot, beta_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, 3, plot_rel_height), ncol = 1)
   } else {
-    merged_plot <- cowplot::plot_grid(coverage_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, 3, plot_rel_height), ncol = 1)
+    merged_plot <- cowplot::plot_grid(coverage_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, plot_rel_height), ncol = 1)
   }
   
   filename_plt = paste0("cov_plot_", gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant, "&", ss_oi$gene_id,".pdf")
@@ -369,15 +378,15 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
   norm_exp_df_oi <- norm_exp_df_oi %>% 
     tidyr::pivot_longer(cols = -sample_id, names_to="intron_id", values_to = "norm_exp")
   
-  track_data_alasoo_box <- track_data_alasoo %>% 
+  track_data_study_box <- track_data_study %>% 
     dplyr::mutate(genotype_text = as.factor(colour_group)) %>% 
     dplyr::filter(qtl_group %in% qtl_group_in) %>%
     dplyr::mutate(condition_name = qtl_group) %>% 
     dplyr::mutate(gene_name = ss_oi$gene_name) %>% 
     dplyr::mutate(snp_id = ss_oi$variant) 
   
-  track_data_alasoo_box <- norm_exp_df_oi %>%  
-    dplyr::left_join(track_data_alasoo_box, by = "sample_id") %>% 
+  track_data_study_box <- norm_exp_df_oi %>%  
+    dplyr::left_join(track_data_study_box, by = "sample_id") %>% 
     dplyr::mutate(is_significant = intron_id == ss_oi$molecular_trait_id)
   
   nom_cc_sumstats_filt <- nom_cc_sumstats %>% 
@@ -385,14 +394,15 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
     dplyr::select(molecular_trait_id, pvalue, beta, se, maf) %>% 
     dplyr::rename(intron_id = molecular_trait_id)
   
-  track_data_alasoo_box_wrap <- track_data_alasoo_box %>% 
+  track_data_study_box_wrap <- track_data_study_box %>% 
     dplyr::left_join(nom_cc_sumstats_filt, by = "intron_id") %>% 
     dplyr::mutate(stats_text = paste0("Pval: ", pvalue, "			BETA: ", beta, 
-                                      "\nSE: ", se, "				MAF: ", maf)) %>% 
+                                      "\nSE: ", se)) %>% 
     dplyr::mutate(intron_id_with_stats = paste0(intron_id, "\n", stats_text))
   
   message(" ## Plotting box plots")
-  boxplot_facet <- ggplot2::ggplot(track_data_alasoo_box_wrap, 
+
+  boxplot_facet <- ggplot2::ggplot(track_data_study_box_wrap, 
                                    ggplot2::aes(x = genotype_text, 
                                                 y = norm_exp, 
                                                 color = is_significant, 
@@ -401,15 +411,23 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
     ggplot2::geom_boxplot(outlier.shape = NA) + 
     ggplot2::geom_jitter(position = ggplot2::position_jitter(width = .2), size = 0.5) + 
     ggplot2::ylab(paste0("Usage of introns in cluster ", ss_oi$group_id, "\n(", ss_oi$gene_name, " gene region)")) +
-    ggplot2::xlab(track_data_alasoo_box$snp_id[1]) + 
+    ggplot2::xlab(paste0(track_data_study_box_wrap$snp_id[1], "    (MAF:", track_data_study_box_wrap$maf[1], ")")) + 
     ggplot2::theme_light() + 
-    # ggplot2::scale_color_manual(values = seqUtils::conditionPalette(), guide=FALSE) +
     ggplot2::theme(strip.text.x = ggplot2::element_text(colour = "grey10"), strip.background = ggplot2::element_rect(fill = "grey85"))
   
   filename_plt_box_facet = paste0("box_facet_plot_", gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant, "&", ss_oi$gene_id,".pdf")
   ggplot2::ggsave(path = path_plt, filename = filename_plt_box_facet, plot = boxplot_facet, device = "pdf", width = 10, height = 11)
   
-  for (intron_id_sel in track_data_alasoo_box$intron_id %>% BiocGenerics::unique()) {
+  track_data_study_box_wrap_for_RDS <- track_data_study_box_wrap %>%
+    dplyr::select(genotype_text, norm_exp, is_significant, intron_id_with_stats, snp_id, maf)
+  
+  track_data_study_box_wrap_for_RDS <- track_data_study_box_wrap_for_RDS[sample(nrow(track_data_study_box_wrap_for_RDS)),]
+
+  Rds_list[["box_plot_wrap"]] <- track_data_study_box_wrap_for_RDS
+  Rds_plot_file_name <- paste0(path_plt, "/plot_data_", gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant, "&", ss_oi$gene_id,".Rds")
+  saveRDS(object = Rds_list, compress = "gzip", file = Rds_plot_file_name)
+  
+  for (intron_id_sel in track_data_study_box$intron_id %>% BiocGenerics::unique()) {
     nom_cc_sumstats_filt <- nom_cc_sumstats %>% 
       dplyr::filter(molecular_trait_id == intron_id_sel, variant %in% ss_oi$variant) %>% 
       dplyr::slice(1)
@@ -418,17 +436,17 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
     labels <- c(paste0("P-value: ", nom_cc_sumstats_filt$pvalue, "			BETA: ", nom_cc_sumstats_filt$beta, 
                        "\nStd. Err: ", nom_cc_sumstats_filt$se, "				MAF: ", nom_cc_sumstats_filt$maf))
     
-    track_data_alasoo_box_intron <- track_data_alasoo_box %>% dplyr::filter(intron_id == intron_id_sel)
+    track_data_study_box_intron <- track_data_study_box %>% dplyr::filter(intron_id == intron_id_sel)
     
-    box_plot <- ggplot2::ggplot(track_data_alasoo_box_intron, 
+    box_plot <- ggplot2::ggplot(track_data_study_box_intron, 
                                 ggplot2::aes(x = genotype_text, 
                                              y = norm_exp, 
                                              color = condition_name, 
                                              group = genotype_text)) + 
       ggplot2::geom_boxplot(outlier.shape = NA) + 
       ggplot2::geom_jitter(position = ggplot2::position_jitter(width = .2), size = 0.5) + 
-      ggplot2::ylab(paste0(track_data_alasoo_box_intron$intron_id[1], " usage")) +
-      ggplot2::xlab(track_data_alasoo_box_intron$snp_id[1]) + 
+      ggplot2::ylab(paste0(track_data_study_box_intron$intron_id[1], " usage")) +
+      ggplot2::xlab(track_data_study_box_intron$snp_id[1]) + 
       ggplot2::theme_light() + 
       ggplot2::labs(subtitle = labels) +
       ggplot2::theme(strip.text.x = ggplot2::element_text(colour = "grey10"), strip.background = ggplot2::element_rect(fill = "grey85"))
@@ -439,20 +457,20 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
 }
 
 
-# box_plot <- ggplot2::ggplot(track_data_alasoo_box_intron, 
+# box_plot <- ggplot2::ggplot(track_data_study_box_intron, 
 #                             ggplot2::aes(x = genotype_text, 
 #                                          y = norm_exp, 
 #                                          color = condition_name, 
 #                                          group = genotype_text)) + 
 #   ggplot2::geom_boxplot(outlier.shape = NA) + 
 #   ggplot2::geom_jitter(position = ggplot2::position_jitter(width = .2), size = 0.5) + 
-#   ggplot2::ylab(paste0(track_data_alasoo_box_intron$intron_id[1], " usage")) +
-#   ggplot2::xlab(track_data_alasoo_box_intron$snp_id[1]) + 
+#   ggplot2::ylab(paste0(track_data_study_box_intron$intron_id[1], " usage")) +
+#   ggplot2::xlab(track_data_study_box_intron$snp_id[1]) + 
 #   ggplot2::theme_light() + 
 #   ggplot2::labs(subtitle = labels) +
 #   ggplot2::theme(legend.position="right", plot.margin = grid::unit(c(1,1,3,1),"lines")) + 
 #   ggplot2::annotation_custom(grob = grid::textGrob("Extra\n text. \n Read all\n about it"),  
-#                              xmin = 4, xmax = 4, ymin = 1, ymax = max(track_data_alasoo_box_intron$norm_exp))
+#                              xmin = 4, xmax = 4, ymin = 1, ymax = max(track_data_study_box_intron$norm_exp))
 # 
 # gt <- ggplot2::ggplot_gtable(ggplot2::ggplot_build(box_plot))
 # gt$layout$clip[gt$layout$name=="panel"] <- "off"
