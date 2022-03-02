@@ -306,7 +306,8 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
     dplyr::select(sample_id, scaling_factor, bigWig, track_id, colour_group, qtl_group)
   
   # Generate the output path 
-  path_plt = paste0(output_dir, paste0("/",gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant, "&", ss_oi$gene_id))
+  signal_name <- paste0(gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant, "&", ss_oi$gene_id)
+  path_plt = file.path(output_dir, signal_name)
   if (!dir.exists(path_plt)){
     dir.create(path_plt, recursive = TRUE)
   }
@@ -366,7 +367,7 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
     merged_plot <- cowplot::plot_grid(coverage_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, plot_rel_height), ncol = 1)
   }
   
-  filename_plt = paste0("cov_plot_", gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant, "&", ss_oi$gene_id,".pdf")
+  filename_plt = paste0("cov_plot_", signal_name,".pdf")
   ggplot2::ggsave(path = path_plt, filename = filename_plt, plot = merged_plot, device = "pdf", width = 10, height = 8)
   
   # BOXPLOTS START HERE
@@ -415,7 +416,7 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
     ggplot2::theme_light() + 
     ggplot2::theme(strip.text.x = ggplot2::element_text(colour = "grey10"), strip.background = ggplot2::element_rect(fill = "grey85"))
   
-  filename_plt_box_facet = paste0("box_facet_plot_", gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant, "&", ss_oi$gene_id,".pdf")
+  filename_plt_box_facet = paste0("box_facet_plot_", signal_name,".pdf")
   ggplot2::ggsave(path = path_plt, filename = filename_plt_box_facet, plot = boxplot_facet, device = "pdf", width = 10, height = 11)
   
   track_data_study_box_wrap_for_RDS <- track_data_study_box_wrap %>%
@@ -424,8 +425,29 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
   track_data_study_box_wrap_for_RDS <- track_data_study_box_wrap_for_RDS[sample(nrow(track_data_study_box_wrap_for_RDS)),]
 
   Rds_list[["box_plot_wrap"]] <- track_data_study_box_wrap_for_RDS
-  Rds_plot_file_name <- paste0(path_plt, "/plot_data_", gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant, "&", ss_oi$gene_id,".Rds")
+  Rds_plot_file_name <- paste0(path_plt, "/plot_data_", signal_name,".Rds")
   saveRDS(object = Rds_list, compress = "gzip", file = Rds_plot_file_name)
+  
+  tar_path = paste0(path_plt, "/plot_data_tsv/")
+  if (!dir.exists(tar_path)){
+    dir.create(tar_path, recursive = TRUE)
+  }
+  limit_max <- max(Rds_list$cov_plot_data$limits, Rds_list$exon_plot_data$limits)
+  Rds_list$exon_plot_data$transcript_struct_df <- Rds_list$exon_plot_data$transcript_struct_df %>% 
+    dplyr::mutate(limit_max = limit_max)
+  write_tsv(x = Rds_list$cov_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
+  write_tsv(x = Rds_list$exon_plot_data$transcript_struct_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
+  write_tsv(x = Rds_list$box_plot_wrap, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
+  write_tsv(x = Rds_list$ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
+  
+  signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
+  
+  filename_all_plt_data_tar = paste0(path_plt, "/plot_data_", signal_name,".tar.gz")
+  setwd(path_plt)
+  tar(tarfile = filename_all_plt_data_tar, files = "plot_data_tsv",
+      compression = "gzip")
+  unlink("plot_data_tsv", recursive = TRUE)
+  setwd("../..")
   
   for (intron_id_sel in track_data_study_box$intron_id %>% BiocGenerics::unique()) {
     nom_cc_sumstats_filt <- nom_cc_sumstats %>% 
@@ -475,3 +497,4 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
 # gt <- ggplot2::ggplot_gtable(ggplot2::ggplot_build(box_plot))
 # gt$layout$clip[gt$layout$name=="panel"] <- "off"
 # t = grid::grid.draw(gt)
+
