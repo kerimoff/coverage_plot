@@ -45,6 +45,8 @@ makeCoveragePlot_loc <- function(coverage_df, limits,
                                  show_genotype_legend = FALSE, 
                                  vert_lines = NULL,
                                  vert_line_alpha = 0.3){
+  coverage_max_y = max(coverage_df$coverage) + max(coverage_df$coverage) * 0.05
+  
   #Plot coverage over a region
   coverage_plot = ggplot(coverage_df, aes_(~bins, ~coverage, group = ~sample_id, alpha = ~alpha)) + 
     geom_blank() +
@@ -67,7 +69,7 @@ makeCoveragePlot_loc <- function(coverage_df, limits,
     facet_grid(track_id~.) +
     dataTrackTheme() + 
     scale_x_continuous(expand = c(0,0)) +
-    scale_y_continuous(expand = c(0,0)) +
+    scale_y_continuous(expand = c(0,0), limits = c(0, coverage_max_y)) +
     coord_cartesian(xlim = limits) +
     scale_color_manual(values = fill_palette) +
     scale_fill_manual(values = fill_palette) +
@@ -190,7 +192,7 @@ generate_beta_plot <- function(transcript_struct_df_loc,
 
 
 #Debugging
-if (FALSE) {
+if (TRUE) {
   opt = list()
   opt$r = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/plots_data_generate/18_333143_334742_clu_4553_+&chr18_334742_C_T&ENSG00000158270/plot_data_18_333143_334742_clu_4553_+&chr18_334742_C_T&ENSG00000158270.Rds"
   opt$t = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/plots_data_generate/18_333143_334742_clu_4553_+&chr18_334742_C_T&ENSG00000158270/plot_data_18_333143_334742_clu_4553_+&chr18_334742_C_T&ENSG00000158270.tar.gz"
@@ -239,7 +241,7 @@ if (useRds) {
   coverage_df <- Rds_data_list$coverage_plot_df
   box_plot_wrap <- Rds_data_list$box_plot_wrap_df
   ss_oi <- Rds_data_list$ss_oi
-    
+  
 } else { # using TAR file to plot 
   tar_files <- untar(tarfile = tar_file_path, list = T)
   path_to_export = file.path(output_dir, gsub("\\..*","",basename(tar_file_path)))
@@ -250,7 +252,7 @@ if (useRds) {
   limits_loc = c(1, transcript_struct_df$limit_max[1])
   box_plot_wrap = read_tsv(tar_files[which(grepl(pattern = "box_plot", x = tar_files))])
   ss_oi = read_tsv(tar_files[which(grepl(pattern = "ss_oi", x = tar_files))])
-
+  
   unlink(path_to_export, recursive = TRUE)
 }
 
@@ -261,12 +263,12 @@ intron_ss_oi_vert_lines = transcript_struct_df %>%
 intron_ss_oi_vert_lines <- c(intron_ss_oi_vert_lines[1,] %>% pull(end), intron_ss_oi_vert_lines[2,] %>% pull(start))
 
 coverage_plot = makeCoveragePlot_loc(coverage_df = coverage_df, 
-                                      limits = limits_loc, 
-                                      alpha = 1, 
-                                      fill_palette = wiggleplotr::getGenotypePalette(), 
-                                      coverage_type = "line", 
-                                      show_genotype_legend = TRUE,
-                                      vert_lines = intron_ss_oi_vert_lines)
+                                     limits = limits_loc, 
+                                     alpha = 1, 
+                                     fill_palette = wiggleplotr::getGenotypePalette(), 
+                                     coverage_type = "line", 
+                                     show_genotype_legend = TRUE,
+                                     vert_lines = intron_ss_oi_vert_lines)
 
 exon_plot <- plotTranscriptStructure_loc(exons_df = transcript_struct_df, 
                                          limits = limits_loc, 
@@ -304,7 +306,7 @@ if(!is.null(nominal_exon_sumstats_path)) {
     dplyr::mutate(se_bottom = beta - se) %>% 
     dplyr::mutate(interval = ci.value * se) %>% 
     dplyr::mutate(p_fdr = p.adjust(pvalue, method = "fdr"))
-
+  
 }
 
 if (exists("nom_exon_cc_sumstats_filt") && nrow(nom_exon_cc_sumstats_filt) > 0) {
@@ -328,7 +330,7 @@ ggplot2::ggsave(path = path_plt, filename = filename_plt, plot = merged_plot, de
 
 box_plot_wrap <- box_plot_wrap %>% 
   dplyr::mutate(stats_text = paste0("Pval: ", pvalue, "			BETA: ", beta, 
-                                                   "\nSE: ", se)) %>% 
+                                    "\nSE: ", se)) %>% 
   dplyr::mutate(intron_id_with_stats = paste0(intron_id, "\n", stats_text))
 
 boxplot_facet <- ggplot2::ggplot(box_plot_wrap, 
