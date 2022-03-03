@@ -51,6 +51,15 @@ make_transcript_exon_granges <- function(gff, transcript_ids) {
   return(exon_list)
 }
 
+make_transcript_exon_granges_ccds <- function(gff, transcript_ids) {
+  exon_list <- list()
+  for (transcript_id in transcript_ids) {
+    exon_list[[transcript_id]] <- gff[(base::gsub("\\..*","",SummarizedExperiment::elementMetadata(gff)[,"transcript_id"]) == transcript_id & !is.na(SummarizedExperiment::elementMetadata(gff)[,"ccds_id"]))]
+  }
+  exon_list <- rlist::list.clean(exon_list, function(x) length(x) == 0L, recursive = TRUE)
+  return(exon_list)
+}
+
 make_pseudo_exons <- function(df_introns, ps_exon_len = 50){
   uniq_intron_ids <- df_introns %>% dplyr::pull(phenotype_id)
   introns_oi_exon1 <- df_introns %>% dplyr::mutate(ps_exon_start = intron_start - ps_exon_len, ps_exon_end = intron_start)
@@ -112,19 +121,18 @@ make_connected_components_from_cs <- function(susie_all_df, z_threshold = 3, cs_
 
 generate_beta_plot <- function(exon_plot_data_loc, nom_exon_cc_sumstats_filt_loc){
   exon_exp_rescaled_exons <- exon_plot_data_loc$transcript_struct_df %>% 
-    dplyr::filter(transcript_id == "exon_exp") %>% 
+    dplyr::filter(transcript_id == paste0("GENE:",ss_oi$gene_name)) %>% 
     dplyr::mutate(exon_row_num = dplyr::row_number()) %>%
     dplyr::mutate(exon_rescaled_center = round((end+start)/2)) %>%
-    dplyr::mutate(beta_wrap_label = "BETA with SE") %>%
-    dplyr::left_join(nom_exon_cc_sumstats_filt_loc %>% dplyr::select(exon_row_num, molecular_trait_id, beta, se, se_top, se_bottom), by = "exon_row_num") %>% 
-    dplyr::mutate(is_lead_exon_qtl = if_else(abs(beta) == max(abs(beta)), 1, 0.5)) 
+    dplyr::mutate(beta_wrap_label = "BETA with 95% CI") %>%
+    dplyr::left_join(nom_exon_cc_sumstats_filt_loc %>% dplyr::select(exon_row_num, molecular_trait_id, beta, interval, p_fdr), by = "exon_row_num") %>% 
+    dplyr::mutate(is_sign_exon_qtl = if_else(p_fdr <= 0.01, 1, 0.2)) 
   
-  beta_plot <- ggplot(exon_exp_rescaled_exons) + 
+  beta_plot <- ggplot(exon_exp_rescaled_exons, aes(x = exon_rescaled_center, y = beta, ymin = beta - interval, ymax = beta + interval, alpha = is_sign_exon_qtl)) + 
     ggplot2::geom_blank() +
+    ggplot2::geom_point(color = "darkblue", alpha=exon_exp_rescaled_exons$is_sign_exon_qtl) + 
+    ggplot2::geom_errorbar(width = max(exon_plot_data_loc$limits)/200, alpha=exon_exp_rescaled_exons$is_sign_exon_qtl) + 
     ggplot2::geom_hline(yintercept = 0, alpha = 0.5, color = "lightgrey") +
-    ggplot2::geom_point(aes(x=exon_rescaled_center, y=beta, alpha = is_lead_exon_qtl), size=1) + 
-    ggplot2::geom_point(aes(x=exon_rescaled_center, y=se_top, alpha = is_lead_exon_qtl), shape=23, fill="blue", color="darkred", size=1) +
-    ggplot2::geom_point(aes(x=exon_rescaled_center, y=se_bottom, alpha = is_lead_exon_qtl), shape=23, fill="blue", color="darkred", size=1) +
     ggplot2::facet_grid(beta_wrap_label~.) +
     ggplot2::theme_light() +
     ggplot2::scale_x_continuous(expand = c(0,0)) + 
@@ -196,7 +204,7 @@ message("######### exon_sumstats      : ", nominal_exon_sumstats_path)
 message(" ## Reading GTF file")
 gtf_ref <- rtracklayer::import(gtf_file_path, 
                                colnames = c("type", "gene_id", "gene_name", "gene_biotype", 
-                                            "transcript_id", "transcript_name","transcript_biotype", "exon_number", "exon_id"),
+                                            "transcript_id", "transcript_name","transcript_biotype", "exon_number", "exon_id", "ccds_id"),
                                feature.type = c("exon"))
 message(" ## Reading sample_metadata file")
 sample_metadata <- readr::read_tsv(sample_meta_path)
@@ -261,6 +269,9 @@ if(!is.null(nominal_exon_sumstats_path)) {
   colnames(nom_exon_cc_sumstats) <- sumstat_colnames
 }
 
+conf.level = 0.95
+ci.value <- -qnorm( ( 1 - conf.level ) / 2 )
+
 message(" ## Starting to plot")
 
 for (index in 1:nrow(susie_high_pip_with_gene)) {
@@ -323,27 +334,40 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
     dplyr::mutate(exon_length = abs(exon_start - exon_end) + 1) %>% 
     dplyr::mutate(exon_row_num = dplyr::row_number()) %>% 
     dplyr::mutate(se_top = beta + se) %>% 
-    dplyr::mutate(se_bottom = beta - se)
+    dplyr::mutate(se_bottom = beta - se) %>% 
+    dplyr::mutate(interval = ci.value * se) %>% 
+    dplyr::mutate(p_fdr = p.adjust(pvalue, method = "fdr"))
   
   exons_to_plot = ps_exons
+  exon_cdss_to_plot = ps_exons_cdss
   
   if (nrow(nom_exon_cc_sumstats_filt) > 0) {
-    nom_exon_granges <- list(exon_exp = GenomicRanges::GRanges(
+    nom_exon_granges <- list()
+    nom_exon_granges[[paste0("GENE:",ss_oi$gene_name)]] = GenomicRanges::GRanges(
       seqnames = nom_exon_cc_sumstats_filt$chromosome,
       ranges = IRanges::IRanges(start = nom_exon_cc_sumstats_filt$exon_start, end = nom_exon_cc_sumstats_filt$exon_end),
       strand = ifelse(test = ss_oi$strand == 1, yes = "+", no = "-"),
       mcols = data.frame(exon_id = nom_exon_cc_sumstats_filt$molecular_trait_id, 
-                         gene_id = nom_exon_cc_sumstats_filt$gene_id)))
+                         gene_id = nom_exon_cc_sumstats_filt$gene_id))
     
     exons_to_plot <- append(exons_to_plot, nom_exon_granges)
   }
   
+  if (!is.null(mane_transcript_gene_map_file)) {
+    MANE_transcript_oi <- mane_transcript_gene_map %>% dplyr::filter(gene_id %in% ss_oi$gene_id) %>% dplyr::pull(transcript_id)
+    mane_transcript_exons <-  make_transcript_exon_granges(gff = gtf_ref, transcript_ids = MANE_transcript_oi)
+    mane_transcript_exons_cdss <-  make_transcript_exon_granges_ccds(gff = gtf_ref, transcript_ids = MANE_transcript_oi)
+
+    # mane_transcript_exons_df <- mane_transcript_exons[[1]] %>% BiocGenerics::as.data.frame()
+    exons_to_plot <- append(exons_to_plot, mane_transcript_exons)
+    exon_cdss_to_plot <- append(exon_cdss_to_plot, mane_transcript_exons_cdss)
+  }
   
   plot_rel_height = ifelse(length(ps_exons)+1 <= 5, 3, length(ps_exons)) 
 
   coverage_plot_data = wiggleplotr::generateCoveragePlotData(exons = exons_to_plot, 
-                                             cdss = ps_exons_cdss, 
-                                             track_data = track_data_study %>% dplyr::filter(qtl_group==qtl_group_in))
+                                                             cdss = exon_cdss_to_plot, 
+                                                             track_data = track_data_study %>% dplyr::filter(qtl_group==qtl_group_in))
   coverage_plot = wiggleplotr::makeCoveragePlot(coverage_df = coverage_plot_data$coverage_df, 
                                                 limits = coverage_plot_data$limits, 
                                                 alpha = 1, 
@@ -352,16 +376,17 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
                                                 show_genotype_legend = TRUE)
   
   coverage_plot_data$coverage_df <- coverage_plot_data$coverage_df[sample(nrow(coverage_plot_data$coverage_df)),]
-  Rds_list <- list(cov_plot_data = coverage_plot_data, ss_oi = ss_oi)
+  
   
   exon_plot_data <- wiggleplotr::generateTxStructurePlotData(exons = exons_to_plot,
-                                                             cdss = ps_exons_cdss)
+                                                             cdss = exon_cdss_to_plot)
   exon_plot <- wiggleplotr::plotTranscriptStructure(exons_df = exon_plot_data$transcript_struct_df, limits = exon_plot_data$limits)
   
-  Rds_list[["exon_plot_data"]] <- exon_plot_data
+  
   
   if (nrow(nom_exon_cc_sumstats_filt) > 0) {
-    beta_plot <- generate_beta_plot(exon_plot_data, nom_exon_cc_sumstats_filt)
+    beta_plot <- generate_beta_plot(exon_plot_data_loc = exon_plot_data, 
+                                    nom_exon_cc_sumstats_filt_loc = nom_exon_cc_sumstats_filt)
     merged_plot <- cowplot::plot_grid(coverage_plot, beta_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, 3, plot_rel_height), ncol = 1)
   } else {
     merged_plot <- cowplot::plot_grid(coverage_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, plot_rel_height), ncol = 1)
@@ -420,11 +445,16 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
   ggplot2::ggsave(path = path_plt, filename = filename_plt_box_facet, plot = boxplot_facet, device = "pdf", width = 10, height = 11)
   
   track_data_study_box_wrap_for_RDS <- track_data_study_box_wrap %>%
-    dplyr::select(genotype_text, norm_exp, is_significant, intron_id_with_stats, snp_id, maf)
+    dplyr::select(genotype_text, norm_exp, is_significant, intron_id, pvalue, beta, se, snp_id, maf)
   
   track_data_study_box_wrap_for_RDS <- track_data_study_box_wrap_for_RDS[sample(nrow(track_data_study_box_wrap_for_RDS)),]
-
-  Rds_list[["box_plot_wrap"]] <- track_data_study_box_wrap_for_RDS
+  
+  limit_max <- max(coverage_plot_data$limits, exon_plot_data$limits)
+  
+  tx_str_df <- exon_plot_data$transcript_struct_df %>% dplyr::mutate(limit_max = limit_max)
+  Rds_list <- list(coverage_plot_df = coverage_plot_data$coverage_df, ss_oi = ss_oi)
+  Rds_list[["tx_str_df"]] <- tx_str_df
+  Rds_list[["box_plot_wrap_df"]] <- track_data_study_box_wrap_for_RDS
   Rds_plot_file_name <- paste0(path_plt, "/plot_data_", signal_name,".Rds")
   saveRDS(object = Rds_list, compress = "gzip", file = Rds_plot_file_name)
   
@@ -432,13 +462,11 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
   if (!dir.exists(tar_path)){
     dir.create(tar_path, recursive = TRUE)
   }
-  limit_max <- max(Rds_list$cov_plot_data$limits, Rds_list$exon_plot_data$limits)
-  Rds_list$exon_plot_data$transcript_struct_df <- Rds_list$exon_plot_data$transcript_struct_df %>% 
-    dplyr::mutate(limit_max = limit_max)
-  write_tsv(x = Rds_list$cov_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
-  write_tsv(x = Rds_list$exon_plot_data$transcript_struct_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
-  write_tsv(x = Rds_list$box_plot_wrap, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
-  write_tsv(x = Rds_list$ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
+
+  write_tsv(x = coverage_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
+  write_tsv(x = tx_str_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
+  write_tsv(x = track_data_study_box_wrap_for_RDS, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
+  write_tsv(x = ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
   
   signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
   
@@ -477,24 +505,3 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
     ggplot2::ggsave(path = path_plt, filename = filename_plt_box, plot = box_plot, device = "pdf", width = 7, height = 5)
   }
 }
-
-
-# box_plot <- ggplot2::ggplot(track_data_study_box_intron, 
-#                             ggplot2::aes(x = genotype_text, 
-#                                          y = norm_exp, 
-#                                          color = condition_name, 
-#                                          group = genotype_text)) + 
-#   ggplot2::geom_boxplot(outlier.shape = NA) + 
-#   ggplot2::geom_jitter(position = ggplot2::position_jitter(width = .2), size = 0.5) + 
-#   ggplot2::ylab(paste0(track_data_study_box_intron$intron_id[1], " usage")) +
-#   ggplot2::xlab(track_data_study_box_intron$snp_id[1]) + 
-#   ggplot2::theme_light() + 
-#   ggplot2::labs(subtitle = labels) +
-#   ggplot2::theme(legend.position="right", plot.margin = grid::unit(c(1,1,3,1),"lines")) + 
-#   ggplot2::annotation_custom(grob = grid::textGrob("Extra\n text. \n Read all\n about it"),  
-#                              xmin = 4, xmax = 4, ymin = 1, ymax = max(track_data_study_box_intron$norm_exp))
-# 
-# gt <- ggplot2::ggplot_gtable(ggplot2::ggplot_build(box_plot))
-# gt$layout$clip[gt$layout$name=="panel"] <- "off"
-# t = grid::grid.draw(gt)
-
