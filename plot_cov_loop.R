@@ -29,7 +29,9 @@ option_list <- list(
   make_option(c("-a", "--all_summ_stats"), type="character", default=NULL,
               help="Path to the full gene nominal summary statistics", metavar = "type"),
   make_option(c("-e", "--exon_summ_stats"), type="character", default=NULL,
-              help="Path to the full exon nominal summary statistics", metavar = "type")
+              help="Path to the full exon nominal summary statistics", metavar = "type"),
+  make_option(c("-w", "--wiggle_plotr_path"), type="character", default=NULL,
+              help="Local path to wiggleplotr package", metavar = "type")
 )
 
 message(" ## Parsing options")
@@ -119,8 +121,12 @@ make_connected_components_from_cs <- function(susie_all_df, z_threshold = 3, cs_
   return(cc_df)
 }
 
-generate_beta_plot <- function(exon_plot_data_loc, nom_exon_cc_sumstats_filt_loc){
-  exon_exp_rescaled_exons <- exon_plot_data_loc$transcript_struct_df %>% 
+generate_beta_plot <- function(transcript_struct_df_loc, 
+                               nom_exon_cc_sumstats_filt_loc, 
+                               limits, 
+                               vert_lines = NULL,
+                               vert_line_alpha = 0.3){
+  exon_exp_rescaled_exons <- transcript_struct_df_loc %>% 
     dplyr::filter(transcript_id == paste0("GENE:",ss_oi$gene_name)) %>% 
     dplyr::mutate(exon_row_num = dplyr::row_number()) %>%
     dplyr::mutate(exon_rescaled_center = round((end+start)/2)) %>%
@@ -131,13 +137,13 @@ generate_beta_plot <- function(exon_plot_data_loc, nom_exon_cc_sumstats_filt_loc
   beta_plot <- ggplot(exon_exp_rescaled_exons, aes(x = exon_rescaled_center, y = beta, ymin = beta - interval, ymax = beta + interval, alpha = is_sign_exon_qtl)) + 
     ggplot2::geom_blank() +
     ggplot2::geom_point(color = "darkblue", alpha=exon_exp_rescaled_exons$is_sign_exon_qtl) + 
-    ggplot2::geom_errorbar(width = max(exon_plot_data_loc$limits)/200, alpha=exon_exp_rescaled_exons$is_sign_exon_qtl) + 
+    ggplot2::geom_errorbar(width = max(limits)/200, alpha=exon_exp_rescaled_exons$is_sign_exon_qtl) + 
     ggplot2::geom_hline(yintercept = 0, alpha = 0.5, color = "lightgrey") +
     ggplot2::facet_grid(beta_wrap_label~.) +
     ggplot2::theme_light() +
     ggplot2::scale_x_continuous(expand = c(0,0)) + 
     ggplot2::ylab("Effect size") +
-    coord_cartesian(xlim = exon_plot_data_loc$limits) +
+    coord_cartesian(xlim = limits) +
     theme(plot.margin=unit(c(0,1,0,1),"line"), 
           axis.title.x = element_blank(),
           axis.text.x = element_blank(),
@@ -148,6 +154,9 @@ generate_beta_plot <- function(exon_plot_data_loc, nom_exon_cc_sumstats_filt_loc
           strip.text.y = element_text(colour = "grey10"),
           strip.background = element_rect(fill = "grey85")) 
   
+  if (!is.null(vert_lines)) {
+    beta_plot <- beta_plot + ggplot2::geom_vline(xintercept = vert_lines, alpha = vert_line_alpha, color = "lightgrey")
+  }
   return(beta_plot)
 }
 
@@ -184,6 +193,7 @@ gtf_file_path = opt$g
 norm_usage_matrix_path = opt$u
 nominal_sumstats_path = opt$a
 nominal_exon_sumstats_path = opt$e
+wiggleplotr_path = opt$w
 
 message("######### Options: ######### ")
 message("######### Working Directory  : ", getwd())
@@ -200,6 +210,8 @@ message("######### gtf_file_path      : ", gtf_file_path)
 message("######### norm_usage_matrix  : ", norm_usage_matrix_path)
 message("######### nominal_sumstats   : ", nominal_sumstats_path)
 message("######### exon_sumstats      : ", nominal_exon_sumstats_path)
+message("######### wiggleplotr_path   : ", wiggleplotr_path)
+
 
 message(" ## Reading GTF file")
 gtf_ref <- rtracklayer::import(gtf_file_path, 
@@ -212,56 +224,49 @@ sample_metadata <- readr::read_tsv(sample_meta_path)
 message(" ## Reading mane_transcript_gene_map file")
 mane_transcript_gene_map <- readr::read_tsv(mane_transcript_gene_map_file)
 
-message(" ## Reading susie file")
-susie_naive <- readr::read_tsv(file = susie_file_path, col_types = "cccicccccdddddddd")
+message(" ## Reading susie_purity_filtered file")
+susie_purity_filtered <- readr::read_tsv(file = susie_file_path, col_types = "cccicccccdddddddd")
 
 message(" ## Reading normalised usage matrix")
 norm_exp_df <- readr::read_tsv(norm_usage_matrix_path)
 
 message(" ## Reading leafcutter metadata file")
-leafcutter_metadata <- readr::read_tsv(phenotype_meta_path) %>% 
-  dplyr::filter(!is.na(gene_id)) %>% 
-  dplyr::filter(gene_count == 1)
-
+leafcutter_metadata <- readr::read_tsv(phenotype_meta_path, col_types = "cccccddiccidddddddd") 
 
 if (is.null(study_name)) { 
   assertthat::has_name(sample_metadata, "study" )
   study_name <- sample_metadata$study[1] 
 }
 
-message(" ## Building Connected-Components")
-susie_naive <- susie_naive %>% dplyr::mutate(cs_uid = paste0(study_name, "%", cs_id))
-susie_naive_cc <- make_connected_components_from_cs(susie_all_df = susie_naive, cs_size_threshold = 50)
 
-susie_naive_filt_cc <- susie_naive %>% 
-  dplyr::filter(molecular_trait_id %in% susie_naive_cc$molecular_trait_id) %>% 
-  dplyr::left_join(susie_naive_cc %>% dplyr::select(cc_membership_no, molecular_trait_id), by = "molecular_trait_id")
+if(assertthat::assert_that(all(!is.na(leafcutter_metadata$gene_id) && all(!is.na(leafcutter_metadata$gene_name))), 
+                           msg = "All gene_id's and gene_name's in leafcutter_metadata should be non-NA")) {
+  message("All the phenotypes in leafcutter_metadata has properly assigned to a certain gene!")
+}
 
-susie_naive_high_pip_var <- susie_naive_filt_cc %>% 
-  dplyr::group_by(cc_membership_no) %>% 
-  dplyr::arrange(-pip) %>% 
-  dplyr::slice(1) %>% 
-  dplyr::ungroup() %>% 
-  dplyr::arrange(-pip)
+susie_high_pip_with_gene <- susie_purity_filtered %>% 
+  dplyr::left_join(leafcutter_metadata %>% dplyr::select(-chromosome), by = c("molecular_trait_id" = "phenotype_id")) 
 
-susie_high_pip_with_gene <- susie_naive_high_pip_var %>% 
-  dplyr::left_join(leafcutter_metadata %>% dplyr::select(-chromosome), by = c("molecular_trait_id" = "phenotype_id")) %>% 
-  dplyr::filter(!is.na(gene_id))
+variant_regions_ss <- susie_high_pip_with_gene %>% 
+  dplyr::select(variant, chromosome, position) %>%
+  dplyr::distinct() %>% 
+  dplyr::mutate(region = paste0(chromosome,":", position, "-", position))
 
-signal_file_name <- paste0(study_name, "_", qtl_group_in, "_CC_signal_phenotype_ids.txt")
-readr::write_tsv(x = susie_high_pip_with_gene %>% dplyr::select(molecular_trait_id), file = signal_file_name, col_names = F)
-
-message(" ## Reading nominal summary statistics of ", nrow(susie_high_pip_with_gene), " variants.")
 sumstat_colnames <- c("molecular_trait_id", "chromosome", "position", 
                       "ref", "alt", "variant", "ma_samples", "maf", 
                       "pvalue", "beta", "se", "type", "ac", "an", 
                       "r2", "molecular_trait_object_id", "gene_id", 
                       "median_tpm", "rsid")
-variant_regions_ss <- susie_high_pip_with_gene %>% 
-  dplyr::select(variant, chromosome, position) %>% 
-  dplyr::mutate(region = paste0(chromosome,":", position, "-", position))
+
+message(" ## Reading nominal summary statistics of ", nrow(variant_regions_ss), " variants.")
 nom_cc_sumstats <- seqminer::tabix.read.table(nominal_sumstats_path, variant_regions_ss$region) 
 colnames(nom_cc_sumstats) <- sumstat_colnames
+
+# Keep only 1 rsid per variant per molecular_trait_id
+nom_cc_sumstats <- nom_cc_sumstats %>% 
+  dplyr::group_by(molecular_trait_id, variant) %>% 
+  dplyr::filter(rsid == rsid[1]) %>% 
+  dplyr::ungroup()
 
 if(!is.null(nominal_exon_sumstats_path)) {
   message(" ## Reading exon summary statistics")
@@ -274,14 +279,21 @@ ci.value <- -qnorm( ( 1 - conf.level ) / 2 )
 
 message(" ## Starting to plot")
 
-for (index in 1:nrow(susie_high_pip_with_gene)) {
-  ss_oi = susie_high_pip_with_gene[index,]
+highest_pip_vars_per_cs <- susie_high_pip_with_gene %>% 
+  dplyr::group_by(cs_id) %>% 
+  dplyr::arrange(-pip) %>% 
+  dplyr::slice(1) %>% 
+  dplyr::ungroup()
+
+message(" ## Will plot ", nrow(highest_pip_vars_per_cs), " highest pip per credible set signals.")
+for (index in 1:nrow(highest_pip_vars_per_cs)) {
+  ss_oi = highest_pip_vars_per_cs[index,]
   message("index: ", index, ", intron_id: ", ss_oi$molecular_trait_id, ", variant: ", ss_oi$variant)
   
   # get all the intons in leafcutter cluster
   cluster_introns <- leafcutter_metadata %>% dplyr::filter(group_id %in% ss_oi$group_id)
   ps_exons <- make_pseudo_exons(df_introns = cluster_introns)
-  ps_exons_cdss <- make_pseudo_exons(leafcutter_metadata %>% filter(phenotype_id %in% ss_oi$molecular_trait_id))
+  ps_exons_cdss <- make_pseudo_exons(leafcutter_metadata %>% dplyr::filter(phenotype_id %in% ss_oi$molecular_trait_id))
   
   variant_regions_vcf <- ss_oi %>% 
     dplyr::select(variant, chromosome, position) %>% 
@@ -364,29 +376,37 @@ for (index in 1:nrow(susie_high_pip_with_gene)) {
   }
   
   plot_rel_height = ifelse(length(ps_exons)+1 <= 5, 3, length(ps_exons)) 
-
+  
+  exon_plot_data <- wiggleplotr::generateTxStructurePlotData(exons = exons_to_plot,
+                                                             cdss = exon_cdss_to_plot)
+  intron_ss_oi_vert_lines = exon_plot_data$transcript_struct_df %>% 
+    dplyr::filter(transcript_id == ss_oi$molecular_trait_id, feature_type == "exon") 
+  intron_ss_oi_vert_lines <- c(intron_ss_oi_vert_lines[1,] %>% pull(end), intron_ss_oi_vert_lines[2,] %>% pull(start))
+  
+  exon_plot <- wiggleplotr::plotTranscriptStructure(exons_df = exon_plot_data$transcript_struct_df, limits = exon_plot_data$limits)
+  exon_plot <- exon_plot + ggplot2::geom_vline(xintercept = intron_ss_oi_vert_lines, alpha = 0.5, color = "lightgrey")
+  
   coverage_plot_data = wiggleplotr::generateCoveragePlotData(exons = exons_to_plot, 
                                                              cdss = exon_cdss_to_plot, 
+                                                             plot_fraction = 0.2,
                                                              track_data = track_data_study %>% dplyr::filter(qtl_group==qtl_group_in))
+  
+  coverage_plot_data$coverage_df <- coverage_plot_data$coverage_df %>% dplyr::filter(!is.na(coverage))
   coverage_plot = wiggleplotr::makeCoveragePlot(coverage_df = coverage_plot_data$coverage_df, 
                                                 limits = coverage_plot_data$limits, 
                                                 alpha = 1, 
                                                 fill_palette = wiggleplotr::getGenotypePalette(), 
                                                 coverage_type = "line", 
                                                 show_genotype_legend = TRUE)
+  coverage_plot <- coverage_plot + ggplot2::geom_vline(xintercept = intron_ss_oi_vert_lines, alpha = 0.5, color = "lightgrey")
   
   coverage_plot_data$coverage_df <- coverage_plot_data$coverage_df[sample(nrow(coverage_plot_data$coverage_df)),]
   
-  
-  exon_plot_data <- wiggleplotr::generateTxStructurePlotData(exons = exons_to_plot,
-                                                             cdss = exon_cdss_to_plot)
-  exon_plot <- wiggleplotr::plotTranscriptStructure(exons_df = exon_plot_data$transcript_struct_df, limits = exon_plot_data$limits)
-  
-  
-  
   if (nrow(nom_exon_cc_sumstats_filt) > 0) {
-    beta_plot <- generate_beta_plot(exon_plot_data_loc = exon_plot_data, 
-                                    nom_exon_cc_sumstats_filt_loc = nom_exon_cc_sumstats_filt)
+    beta_plot <- generate_beta_plot(transcript_struct_df_loc = exon_plot_data$transcript_struct_df, 
+                                    nom_exon_cc_sumstats_filt_loc = nom_exon_cc_sumstats_filt,
+                                    limits = exon_plot_data$limits)
+    beta_plot <- beta_plot + ggplot2::geom_vline(xintercept = intron_ss_oi_vert_lines, alpha = 0.5, color = "lightgrey")
     merged_plot <- cowplot::plot_grid(coverage_plot, beta_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, 3, plot_rel_height), ncol = 1)
   } else {
     merged_plot <- cowplot::plot_grid(coverage_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, plot_rel_height), ncol = 1)
