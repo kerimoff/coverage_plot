@@ -386,6 +386,8 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   
   nom_cc_sumstats <- seqminer::tabix.read.table(nominal_sumstats_path, variant_regions_vcf$region) 
   colnames(nom_cc_sumstats) <- sumstat_colnames
+  nom_cc_sumstats <- nom_cc_sumstats %>% 
+    dplyr::filter(variant %in% variant_regions_vcf$variant)
   
   # Keep only 1 rsid per variant per molecular_trait_id
   nom_cc_sumstats <- nom_cc_sumstats %>% 
