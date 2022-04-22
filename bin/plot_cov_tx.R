@@ -33,6 +33,12 @@ option_list <- list(
   make_option(c("-e", "--exon_summ_stats"), type="character", default=NULL,
               help="Path to the full exon nominal summary statistics", metavar = "type"),
   make_option(c("-w", "--wiggle_plotr_path"), type="character", default=NULL,
+              help="Local path to wiggleplotr package", metavar = "type"),
+  make_option(c("-i", "--individual_boxplots"), type="logical", 
+              action = "store_true", default=FALSE,
+              help="Flag to generate individual boxplots", metavar = "type"),
+  make_option(c("-d", "--debug_mode"), type="logical", 
+              action = "store_true", default=FALSE,
               help="Local path to wiggleplotr package", metavar = "type")
 )
 
@@ -152,6 +158,8 @@ norm_usage_matrix_path = opt$u
 nominal_sumstats_path = opt$a
 nominal_exon_sumstats_path = opt$e
 wiggleplotr_path = opt$w
+individual_boxplots = opt$individual_boxplots
+debug_mode = opt$debug_mode
 
 message("######### Options: ######### ")
 message("######### Working Directory  : ", getwd())
@@ -170,12 +178,26 @@ message("######### norm_usage_matrix  : ", norm_usage_matrix_path)
 message("######### nominal_sumstats   : ", nominal_sumstats_path)
 message("######### exon_sumstats      : ", nominal_exon_sumstats_path)
 message("######### wiggleplotr_path   : ", wiggleplotr_path)
+message("######### individual_boxplots: ", individual_boxplots)
+message("######### debug_mode         : ", debug_mode)
 
-# if (!is.null(wiggleplotr_path)) {
-#   devtools::load_all(wiggleplotr_path)
-# }
+if (!is.null(wiggleplotr_path)) {
+  devtools::load_all(wiggleplotr_path)
+}
 
-message(" ## Reading Txref GTF file")
+################## Global variable definitions ################
+conf.level = 0.95
+ci.value <- -qnorm( ( 1 - conf.level ) / 2 )
+
+sumstat_colnames <- c("molecular_trait_id", "chromosome", "position", 
+                      "ref", "alt", "variant", "ma_samples", "maf", 
+                      "pvalue", "beta", "se", "type", "ac", "an", 
+                      "r2", "molecular_trait_object_id", "gene_id", 
+                      "median_tpm", "rsid")
+
+###############################################################
+
+message(" ## Reading Tx GTF file")
 gtf_ref_tx <- rtracklayer::import(tx_gtf_file_path, 
                                colnames = c("gene_id", "gene_name", "transcript_id", "tag"),
                                feature.type = c("exon"))
@@ -214,25 +236,21 @@ if(assertthat::assert_that(all(!is.na(phenotype_metadata$gene_id) && all(!is.na(
 susie_high_pip_with_gene <- susie_purity_filtered %>% 
   dplyr::left_join(phenotype_metadata %>% dplyr::select(-chromosome), by = c("molecular_trait_id" = "phenotype_id")) 
 
-
-conf.level = 0.95
-ci.value <- -qnorm( ( 1 - conf.level ) / 2 )
-
 highest_pip_vars_per_cs <- susie_high_pip_with_gene %>% 
   dplyr::group_by(cs_id) %>% 
   dplyr::arrange(-pip) %>% 
   dplyr::slice(1) %>% 
   dplyr::ungroup()
 
-sumstat_colnames <- c("molecular_trait_id", "chromosome", "position", 
-                      "ref", "alt", "variant", "ma_samples", "maf", 
-                      "pvalue", "beta", "se", "type", "ac", "an", 
-                      "r2", "molecular_trait_object_id", "gene_id", 
-                      "median_tpm", "rsid")
-
-message(" ## Starting to plot")
+if (debug_mode) {
+  message(" ## Slicing 10 highest pip credible set variants for debug_mode")
+  highest_pip_vars_per_cs <- highest_pip_vars_per_cs %>% 
+    dplyr::arrange(-pip) %>% 
+    dplyr::slice_head(n = 10)
+}
 
 message(" ## Will plot ", nrow(highest_pip_vars_per_cs), " highest pip per credible set signals.")
+message(" ## Starting to plot")
 for (index in 1:nrow(highest_pip_vars_per_cs)) {
   ss_oi = highest_pip_vars_per_cs[index,]
   message("index: ", index, ", tx_phenotype_id: ", ss_oi$molecular_trait_id, ", variant: ", ss_oi$variant)
@@ -442,20 +460,41 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dir.create(tar_path, recursive = TRUE)
   }
 
-  write_tsv(x = coverage_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
-  write_tsv(x = tx_str_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
-  write_tsv(x = track_data_study_box_wrap_for_RDS, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
-  write_tsv(x = ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
+  gzfile = gzfile(paste0(tar_path, "/coverage_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = coverage_plot_data$coverage_df, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
   
-  signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
+  gzfile = gzfile(paste0(tar_path, "/tx_str_", signal_name, ".tsv.gz"), "w")
+  write.table(x = tx_str_df, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+
+  gzfile = gzfile(paste0(tar_path, "/box_plot_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = track_data_study_box_wrap_for_RDS, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+
+  gzfile = gzfile(paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = ss_oi, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+
+  # write_tsv(x = coverage_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
+  # write_tsv(x = tx_str_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
+  # write_tsv(x = track_data_study_box_wrap_for_RDS, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
+  # write_tsv(x = ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
   
-  filename_all_plt_data_tar = paste0(path_plt, "/plot_data_", signal_name,".tar.gz")
-  setwd(path_plt)
-  tar(tarfile = filename_all_plt_data_tar, files = "plot_data_tsv",
-      compression = "gzip")
-  unlink("plot_data_tsv", recursive = TRUE)
-  setwd("../..")
+  # signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
   
+  # filename_all_plt_data_tar = paste0(path_plt, "/plot_data_", signal_name,".tar.gz")
+  # setwd(path_plt)
+  # tar(tarfile = filename_all_plt_data_tar, files = "plot_data_tsv",
+  #     compression = "gzip")
+  # unlink("plot_data_tsv", recursive = TRUE)
+  # setwd("../..")
+
+  if (!individual_boxplots) {
+    next
+  }
+  
+  message(" ## Plotting individual boxplots")
   for (tx_id_sel in track_data_study_box$tx_id %>% BiocGenerics::unique()) {
     nom_cc_sumstats_filt <- nom_cc_sumstats %>% 
       dplyr::filter(molecular_trait_id == tx_id_sel, variant %in% ss_oi$variant) %>% 
