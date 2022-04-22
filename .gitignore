@@ -1,3 +1,6 @@
 plot*/
 data*
 slurm*
+results*
+.nextflow*
+work

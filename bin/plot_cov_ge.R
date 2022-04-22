@@ -287,7 +287,7 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::select(sample_id, scaling_factor, bigWig, track_id, colour_group, qtl_group)
   
   # Generate the output path 
-  signal_name <- paste0(gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant)
+  signal_name <- paste0(gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "___", ss_oi$variant)
   path_plt = file.path(output_dir, signal_name)
   if (!dir.exists(path_plt)){
     dir.create(path_plt, recursive = TRUE)
@@ -371,7 +371,9 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   
   filename_plt = paste0("cov_plot_", signal_name,".pdf")
   ggplot2::ggsave(path = path_plt, filename = filename_plt, plot = merged_plot, device = "pdf", width = 10, height = 8)
-  
+  message(" ## Saved: ", filename_plt)
+
+  message(" ## Prepare box plot data")
   # BOXPLOTS START HERE
   norm_exp_df_oi <- norm_exp_df %>% dplyr::filter(phenotype_id %in% ss_oi$molecular_trait_id)
   norm_exp_df_oi <- tibble::column_to_rownames(.data = norm_exp_df_oi,var = "phenotype_id")
@@ -392,6 +394,7 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::left_join(track_data_study_box, by = "sample_id") %>% 
     dplyr::mutate(is_significant = tx_id == ss_oi$molecular_trait_id)
   
+  message(" ## Reading nominal summary stats with seqminer")
   nom_cc_sumstats <- seqminer::tabix.read.table(nominal_sumstats_path, variant_regions_vcf$region) 
   colnames(nom_cc_sumstats) <- sumstat_colnames
   
@@ -450,17 +453,35 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dir.create(tar_path, recursive = TRUE)
   }
 
-  write_tsv(x = coverage_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
-  write_tsv(x = tx_str_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
-  write_tsv(x = track_data_study_box_wrap_for_RDS, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
-  write_tsv(x = ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
+  gzfile = gzfile(paste0(tar_path, "/coverage_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = coverage_plot_data$coverage_df, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
   
-  signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
+  gzfile = gzfile(paste0(tar_path, "/tx_str_", signal_name, ".tsv.gz"), "w")
+  write.table(x = tx_str_df, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+
+  gzfile = gzfile(paste0(tar_path, "/box_plot_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = track_data_study_box_wrap_for_RDS, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+
+  gzfile = gzfile(paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = ss_oi, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+
+  # write_tsv(x = coverage_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
+  # write_tsv(x = tx_str_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
+  # write_tsv(x = track_data_study_box_wrap_for_RDS, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
+  # write_tsv(x = ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
   
-  filename_all_plt_data_tar = paste0(path_plt, "/plot_data_", signal_name,".tar.gz")
-  setwd(path_plt)
-  tar(tarfile = filename_all_plt_data_tar, files = "plot_data_tsv",
-      compression = "gzip")
-  unlink("plot_data_tsv", recursive = TRUE)
-  setwd("../..")
+  # signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
+  
+  # filename_all_plt_data_tar = paste0(path_plt, "/plot_data_", signal_name,".tar.gz")
+  # setwd(path_plt)
+  # message(" ### path_plt: ", path_plt)
+  # message(" ### filename_all_plt_data_tar: ", filename_all_plt_data_tar)
+  # tar(tarfile = filename_all_plt_data_tar, files = "plot_data_tsv",
+  #     compression = "gzip")
+  # unlink("plot_data_tsv", recursive = TRUE)
+  # setwd("../..")
 }
