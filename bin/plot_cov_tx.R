@@ -39,7 +39,7 @@ option_list <- list(
               help="Flag to generate individual boxplots", metavar = "type"),
   make_option(c("-d", "--debug_mode"), type="logical", 
               action = "store_true", default=FALSE,
-              help="Local path to wiggleplotr package", metavar = "type")
+              help="If to run the script in debug mode", metavar = "type")
 )
 
 message(" ## Parsing options")

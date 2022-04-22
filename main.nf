@@ -145,12 +145,16 @@ log.info "========================================="
 
 include { recap_plot_ge } from './workflows/recap_plot_ge_wf'
 include { recap_plot_tx } from './workflows/recap_plot_tx_wf'
+include { recap_plot_txrev } from './workflows/recap_plot_txrev_wf'
+include { recap_plot_exon } from './workflows/recap_plot_exon_wf'
 include { tabix_index } from './modules/utils'
 
 workflow {
     tabix_index(vcf_file_ch)
     recap_plot_ge(study_file_ch.ge.join(tabix_index.out.collect()))
     recap_plot_tx(study_file_ch.tx.join(tabix_index.out.collect()))
+    recap_plot_txrev(study_file_ch.txrev.join(tabix_index.out.collect()))
+    recap_plot_exon(study_file_ch.exon.join(tabix_index.out.collect()))
 }
 
 workflow.onComplete {

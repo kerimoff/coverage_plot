@@ -25,6 +25,8 @@ option_list <- list(
               help="Path to the GTF file to get exons of transcripts", metavar = "type"),
   make_option(c("-u", "--usage_matrix_norm"), type="character", default=NULL,
               help="Path to the normalised usage matrix", metavar = "type"),
+  make_option(c("-a", "--all_summ_stats"), type="character", default=NULL,
+              help="Path to the full gene nominal summary statistics", metavar = "type"),
   make_option(c("-e", "--exon_summ_stats"), type="character", default=NULL,
               help="Path to the full exon nominal summary statistics", metavar = "type"),
   make_option(c("-w", "--wiggle_plotr_path"), type="character", default=NULL,
@@ -34,7 +36,7 @@ option_list <- list(
               help="Flag to generate individual boxplots", metavar = "type"),
   make_option(c("-d", "--debug_mode"), type="logical", 
               action = "store_true", default=FALSE,
-              help="Local path to wiggleplotr package", metavar = "type")
+              help="If to run the script in debug mode", metavar = "type")
 )
 
 message(" ## Parsing options")
@@ -149,6 +151,7 @@ bigwig_files_path = opt$b
 mane_transcript_gene_map_file = opt$m
 gtf_file_path = opt$g
 norm_usage_matrix_path = opt$u
+nominal_sumstats_path = opt$a
 nominal_exon_sumstats_path = opt$e
 wiggleplotr_path = opt$w
 individual_boxplots = opt$individual_boxplots
@@ -168,6 +171,7 @@ message("######### bigwig_files_path  : ", bigwig_files_path)
 message("######### mane_map_file_path : ", mane_transcript_gene_map_file)
 message("######### gtf_file_path      : ", gtf_file_path)
 message("######### norm_usage_matrix  : ", norm_usage_matrix_path)
+message("######### nominal_sumstats   : ", nominal_sumstats_path)
 message("######### exon_sumstats      : ", nominal_exon_sumstats_path)
 message("######### wiggleplotr_path   : ", wiggleplotr_path)
 message("######### individual_boxplots: ", individual_boxplots)
@@ -285,7 +289,7 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::select(sample_id, scaling_factor, bigWig, track_id, colour_group, qtl_group)
   
   # Generate the output path 
-  signal_name <- paste0(gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "&", ss_oi$variant, "&", ss_oi$gene_id)
+  signal_name <- paste0(gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "___", ss_oi$variant)
   path_plt = file.path(output_dir, signal_name)
   if (!dir.exists(path_plt)){
     dir.create(path_plt, recursive = TRUE)
@@ -307,7 +311,7 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::mutate(p_fdr = p.adjust(pvalue, method = "fdr"))
   
   if (nrow(nom_exon_cc_sumstats_filt) == 0) {
-    message("Weirdly there are no summary statistics for this credible set...")
+    message("Weirdly there are no exon summary statistics for this credible set: GENE_ID:", ss_oi$gene_id, ", Variant:", ss_oi$variant )
     next
   }
   
@@ -386,7 +390,9 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   
   filename_plt = paste0("cov_plot_", signal_name,".pdf")
   ggplot2::ggsave(path = path_plt, filename = filename_plt, plot = merged_plot, device = "pdf", width = 10, height = 8)
-  
+  message(" ## Saved: ", filename_plt)
+
+  message(" ## Prepare box plot data")
   # BOXPLOTS START HERE
   norm_exp_df_oi <- norm_exp_df %>% dplyr::filter(phenotype_id %in% exon_quant_pheno_ids$phenotype_id)
   norm_exp_df_oi <- tibble::column_to_rownames(.data = norm_exp_df_oi,var = "phenotype_id")
@@ -407,6 +413,7 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::left_join(track_data_study_box, by = "sample_id") %>% 
     dplyr::mutate(is_significant = tx_id == ss_oi$molecular_trait_id)
   
+  message(" ## Reading nominal summary stats with seqminer")
   nom_cc_sumstats <- seqminer::tabix.read.table(nominal_exon_sumstats_path, variant_regions_vcf$region) 
   colnames(nom_cc_sumstats) <- sumstat_colnames
   
@@ -467,19 +474,35 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dir.create(tar_path, recursive = TRUE)
   }
 
-  write_tsv(x = coverage_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
-  write_tsv(x = tx_str_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
-  write_tsv(x = track_data_study_box_wrap_for_RDS, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
-  write_tsv(x = ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
+  gzfile = gzfile(paste0(tar_path, "/coverage_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = coverage_plot_data$coverage_df, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
   
-  signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
+  gzfile = gzfile(paste0(tar_path, "/tx_str_", signal_name, ".tsv.gz"), "w")
+  write.table(x = tx_str_df, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+
+  gzfile = gzfile(paste0(tar_path, "/box_plot_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = track_data_study_box_wrap_for_RDS, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+
+  gzfile = gzfile(paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = ss_oi, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+
+  # write_tsv(x = coverage_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
+  # write_tsv(x = tx_str_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
+  # write_tsv(x = track_data_study_box_wrap_for_RDS, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
+  # write_tsv(x = ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
   
-  filename_all_plt_data_tar = paste0(path_plt, "/plot_data_", signal_name,".tar.gz")
-  setwd(path_plt)
-  tar(tarfile = filename_all_plt_data_tar, files = "plot_data_tsv",
-      compression = "gzip")
-  unlink("plot_data_tsv", recursive = TRUE)
-  setwd("../..")
+  # signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
+  
+  # filename_all_plt_data_tar = paste0(path_plt, "/plot_data_", signal_name,".tar.gz")
+  # setwd(path_plt)
+  # tar(tarfile = filename_all_plt_data_tar, files = "plot_data_tsv",
+  #     compression = "gzip")
+  # unlink("plot_data_tsv", recursive = TRUE)
+  # setwd("../..")
   
   if (!individual_boxplots) {
     next
