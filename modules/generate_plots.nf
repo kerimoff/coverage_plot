@@ -3,7 +3,6 @@ process generate_recap_plot_ge {
     tag "${name_of_study}_${qtl_group}_${quant_method}"
     label "process_medium"
     publishDir "${params.outdir}/", mode: 'copy'
-    publishDir "${params.outdir}/${name_of_study}_${qtl_group}_${quant_method}/", mode: 'copy', pattern: "${name_of_study}_${qtl_group}_${quant_method}.log"
 
     input:
     tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(vcf_file), file(vcf_file_index)
@@ -13,7 +12,6 @@ process generate_recap_plot_ge {
 
     output:
     path "${name_of_study}_${qtl_group}_${quant_method}"
-    path "${name_of_study}_${qtl_group}_${quant_method}.log"
 
     script:
     debug_mode_check = params.debug_mode ? "--debug_mode" : ""
@@ -36,7 +34,7 @@ process generate_recap_plot_ge {
         $debug_mode_check \
         $individual_boxplots_check 
 
-    cp .command.log ${name_of_study}_${qtl_group}_${quant_method}.log
+    cp .command.log ./${name_of_study}_${qtl_group}_${quant_method}/${name_of_study}_${qtl_group}_${quant_method}.log
     """
 }
 
@@ -45,7 +43,6 @@ process generate_recap_plot_tx {
     tag "${name_of_study}_${qtl_group}_${quant_method}"
     label "process_medium"
     publishDir "${params.outdir}/", mode: 'copy'
-    publishDir "${params.outdir}/${name_of_study}_${qtl_group}_${quant_method}/", mode: 'copy', pattern: "${name_of_study}_${qtl_group}_${quant_method}.log"
 
     input:
     tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(vcf_file), file(vcf_file_index)
@@ -56,7 +53,6 @@ process generate_recap_plot_tx {
 
     output:
     path "${name_of_study}_${qtl_group}_${quant_method}"
-    path "${name_of_study}_${qtl_group}_${quant_method}.log"
 
     script:
     debug_mode_check = params.debug_mode ? "--debug_mode" : ""
@@ -80,6 +76,6 @@ process generate_recap_plot_tx {
         $debug_mode_check \
         $individual_boxplots_check 
 
-    cp .command.log ${name_of_study}_${qtl_group}_${quant_method}.log
+    cp .command.log ./${name_of_study}_${qtl_group}_${quant_method}/${name_of_study}_${qtl_group}_${quant_method}.log
     """
 }

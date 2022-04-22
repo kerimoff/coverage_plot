@@ -149,8 +149,8 @@ include { tabix_index } from './modules/utils'
 
 workflow {
     tabix_index(vcf_file_ch)
-    recap_plot_ge(study_file_ch.ge.join(tabix_index.out))
-    recap_plot_tx(study_file_ch.tx.join(tabix_index.out))
+    recap_plot_ge(study_file_ch.ge.join(tabix_index.out.collect()))
+    recap_plot_tx(study_file_ch.tx.join(tabix_index.out.collect()))
 }
 
 workflow.onComplete {
