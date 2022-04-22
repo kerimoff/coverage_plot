@@ -2,10 +2,6 @@
 nextflow.enable.dsl=2
 
 Channel
-    .fromPath(params.txrev_pheno_meta_path, checkIfExists: true)
-    .set { pheno_metadata_ch }
-
-Channel
     .fromPath(params.mane_transcript_gene_map, checkIfExists: true)
     .set { mane_transcript_gene_map_ch }
 
@@ -26,7 +22,6 @@ workflow recap_plot_txrev {
     main:
     generate_recap_plot_txrev(
         study_tsv_inputs_ch,
-        pheno_metadata_ch.collect(),
         mane_transcript_gene_map_ch.collect(),
         mane_gtf_file_ch.collect(),
         txrev_gtf_file_ch.collect()

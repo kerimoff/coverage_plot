@@ -10,8 +10,8 @@ option_list <- list(
               help="Sample metadata file. Tab separated file", metavar = "type"),
   make_option(c("-p", "--phenotype_meta"), type="character", default=NULL,
               help="Phenotype metadata file. Tab separated file", metavar = "type"),
-  make_option(c("-q", "--qtl_group"), type="character", default="gene_counts",
-              help="Quantification method. Possible values: gene_counts, leafcutter, txrevise, transcript_usage, exon_counts and HumanHT-12_V4 [default \"%default\"]", metavar = "type"),
+  make_option(c("-q", "--qtl_group"), type="character", default=NULL,
+              help="The selected qtl_group in the study", metavar = "type"),
   make_option(c("-o", "--outdir"), type="character", default="./normalised_results/",
               help="Path to the output directory. [default \"%default\"]", metavar = "type"),
   make_option(c("-n", "--name_of_study"), type="character", default=NULL,
@@ -31,7 +31,13 @@ option_list <- list(
   make_option(c("-e", "--exon_summ_stats"), type="character", default=NULL,
               help="Path to the full exon nominal summary statistics", metavar = "type"),
   make_option(c("-w", "--wiggle_plotr_path"), type="character", default=NULL,
-              help="Local path to wiggleplotr package", metavar = "type")
+              help="Local path to wiggleplotr package", metavar = "type"),
+  make_option(c("-i", "--individual_boxplots"), type="logical", 
+              action = "store_true", default=FALSE,
+              help="Flag to generate individual boxplots", metavar = "type"),
+  make_option(c("-d", "--debug_mode"), type="logical", 
+              action = "store_true", default=FALSE,
+              help="If to run the script in debug mode", metavar = "type")
 )
 
 message(" ## Parsing options")
@@ -47,7 +53,9 @@ library(seqminer)
 make_transcript_exon_granges <- function(gff, transcript_ids) {
   exon_list <- list()
   for (transcript_id in transcript_ids) {
-    exon_list[[transcript_id]] <- gff[(base::gsub("\\..*","",SummarizedExperiment::elementMetadata(gff)[,"transcript_id"]) == transcript_id)]
+    transcript_exons_temp <- gff[(base::gsub("\\..*","",SummarizedExperiment::elementMetadata(gff)[,"transcript_id"]) == transcript_id)]
+    gene_id = transcript_exons_temp$gene_name[1]
+    exon_list[[paste0("GENE:", gene_id, ":", transcript_id)]] <- transcript_exons_temp
   }
   exon_list <- rlist::list.clean(exon_list, function(x) length(x) == 0L, recursive = TRUE)
   return(exon_list)
@@ -56,7 +64,9 @@ make_transcript_exon_granges <- function(gff, transcript_ids) {
 make_transcript_exon_granges_ccds <- function(gff, transcript_ids) {
   exon_list <- list()
   for (transcript_id in transcript_ids) {
-    exon_list[[transcript_id]] <- gff[(base::gsub("\\..*","",SummarizedExperiment::elementMetadata(gff)[,"transcript_id"]) == transcript_id & !is.na(SummarizedExperiment::elementMetadata(gff)[,"ccds_id"]))]
+    transcript_exons_temp <- gff[(base::gsub("\\..*","",SummarizedExperiment::elementMetadata(gff)[,"transcript_id"]) == transcript_id & !is.na(SummarizedExperiment::elementMetadata(gff)[,"ccds_id"]))]
+    gene_id = transcript_exons_temp$gene_name[1]
+    exon_list[[paste0("GENE:", gene_id, ":", transcript_id)]] <- transcript_exons_temp
   }
   exon_list <- rlist::list.clean(exon_list, function(x) length(x) == 0L, recursive = TRUE)
   return(exon_list)
@@ -81,44 +91,6 @@ make_pseudo_exons <- function(df_introns, ps_exon_len = 50){
   }
   exon_list <- rlist::list.clean(exon_list, function(x) length(x) == 0L, recursive = TRUE)
   return(exon_list)
-}
-
-make_connected_components_from_cs <- function(susie_all_df, z_threshold = 3, cs_size_threshold = 10) {
-  # Filter the credible sets by Z-score and size
-  susie_filt <- susie_all_df %>%
-    dplyr::group_by(cs_uid) %>%
-    dplyr::mutate(max_abs_z = max(abs(z))) %>%
-    dplyr::filter(max_abs_z > z_threshold, cs_size < cs_size_threshold) %>%
-    dplyr::ungroup()
-  
-  # make the ranges object in order to find overlaps
-  cs_ranges = GenomicRanges::GRanges(
-    seqnames = susie_filt$chromosome,
-    ranges = IRanges::IRanges(start = susie_filt$position, end = susie_filt$position),
-    strand = "*",
-    mcols = data.frame(cs_uid = susie_filt$cs_uid, variant_id = susie_filt$variant, gene_id = susie_filt$molecular_trait_id)
-  )
-  
-  # find overlaps and remove the duplicated
-  olaps <-  GenomicRanges::findOverlaps(cs_ranges, cs_ranges, ignore.strand = TRUE) %>%
-    GenomicRanges::as.data.frame() %>%
-    dplyr::filter(queryHits <= subjectHits)
-  
-  # change variant sharing into credible set sharing 
-  # not to have multiple connected components of variants but credible sets
-  olaps <- olaps %>% dplyr::mutate(cs_uid_1 = cs_ranges$mcols.cs_uid[queryHits], cs_uid_2 = cs_ranges$mcols.cs_uid[subjectHits])
-  edge_list <- olaps %>% dplyr::select(cs_uid_1, cs_uid_2) %>% BiocGenerics::unique() %>% base::as.matrix()
-  
-  # make the graph of connected components
-  g <- igraph::graph_from_edgelist(edge_list, directed = F)
-  g_cc <- igraph::components(g)
-  
-  # turn connected components graph into data frame
-  cc_df <- data.frame(cc_membership_no = g_cc$membership, 
-                      cs_uid = g_cc$membership %>% names()) %>% 
-    dplyr::mutate(molecular_trait_id = base::sub(pattern = "_[^_]+$", replacement = "",x = base::gsub(".*\\%","",cs_uid)))
-  
-  return(cc_df)
 }
 
 generate_beta_plot <- function(transcript_struct_df_loc, 
@@ -194,6 +166,8 @@ norm_usage_matrix_path = opt$u
 nominal_sumstats_path = opt$a
 nominal_exon_sumstats_path = opt$e
 wiggleplotr_path = opt$w
+individual_boxplots = opt$individual_boxplots
+debug_mode = opt$debug_mode
 
 message("######### Options: ######### ")
 message("######### Working Directory  : ", getwd())
@@ -211,7 +185,23 @@ message("######### norm_usage_matrix  : ", norm_usage_matrix_path)
 message("######### nominal_sumstats   : ", nominal_sumstats_path)
 message("######### exon_sumstats      : ", nominal_exon_sumstats_path)
 message("######### wiggleplotr_path   : ", wiggleplotr_path)
+message("######### individual_boxplots: ", individual_boxplots)
+message("######### debug_mode         : ", debug_mode)
+if (!is.null(wiggleplotr_path)) {
+  devtools::load_all(wiggleplotr_path)
+}
 
+################## Global variable definitions ################
+conf.level = 0.95
+ci.value <- -qnorm( ( 1 - conf.level ) / 2 )
+
+sumstat_colnames <- c("molecular_trait_id", "chromosome", "position", 
+                      "ref", "alt", "variant", "ma_samples", "maf", 
+                      "pvalue", "beta", "se", "type", "ac", "an", 
+                      "r2", "molecular_trait_object_id", "gene_id", 
+                      "median_tpm", "rsid")
+
+###############################################################
 
 message(" ## Reading GTF file")
 gtf_ref <- rtracklayer::import(gtf_file_path, 
@@ -238,7 +228,6 @@ if (is.null(study_name)) {
   study_name <- sample_metadata$study[1] 
 }
 
-
 if(assertthat::assert_that(all(!is.na(leafcutter_metadata$gene_id) && all(!is.na(leafcutter_metadata$gene_name))), 
                            msg = "All gene_id's and gene_name's in leafcutter_metadata should be non-NA")) {
   message("All the phenotypes in leafcutter_metadata has properly assigned to a certain gene!")
@@ -247,45 +236,21 @@ if(assertthat::assert_that(all(!is.na(leafcutter_metadata$gene_id) && all(!is.na
 susie_high_pip_with_gene <- susie_purity_filtered %>% 
   dplyr::left_join(leafcutter_metadata %>% dplyr::select(-chromosome), by = c("molecular_trait_id" = "phenotype_id")) 
 
-variant_regions_ss <- susie_high_pip_with_gene %>% 
-  dplyr::select(variant, chromosome, position) %>%
-  dplyr::distinct() %>% 
-  dplyr::mutate(region = paste0(chromosome,":", position, "-", position))
-
-sumstat_colnames <- c("molecular_trait_id", "chromosome", "position", 
-                      "ref", "alt", "variant", "ma_samples", "maf", 
-                      "pvalue", "beta", "se", "type", "ac", "an", 
-                      "r2", "molecular_trait_object_id", "gene_id", 
-                      "median_tpm", "rsid")
-
-message(" ## Reading nominal summary statistics of ", nrow(variant_regions_ss), " variants.")
-nom_cc_sumstats <- seqminer::tabix.read.table(nominal_sumstats_path, variant_regions_ss$region) 
-colnames(nom_cc_sumstats) <- sumstat_colnames
-
-# Keep only 1 rsid per variant per molecular_trait_id
-nom_cc_sumstats <- nom_cc_sumstats %>% 
-  dplyr::group_by(molecular_trait_id, variant) %>% 
-  dplyr::filter(rsid == rsid[1]) %>% 
-  dplyr::ungroup()
-
-if(!is.null(nominal_exon_sumstats_path)) {
-  message(" ## Reading exon summary statistics")
-  nom_exon_cc_sumstats <- seqminer::tabix.read.table(nominal_exon_sumstats_path, variant_regions_ss$region) 
-  colnames(nom_exon_cc_sumstats) <- sumstat_colnames
-}
-
-conf.level = 0.95
-ci.value <- -qnorm( ( 1 - conf.level ) / 2 )
-
-message(" ## Starting to plot")
-
 highest_pip_vars_per_cs <- susie_high_pip_with_gene %>% 
   dplyr::group_by(cs_id) %>% 
   dplyr::arrange(-pip) %>% 
   dplyr::slice(1) %>% 
   dplyr::ungroup()
 
+if (debug_mode) {
+  message(" ## Slicing 10 highest pip credible set variants for debug_mode")
+  highest_pip_vars_per_cs <- highest_pip_vars_per_cs %>% 
+    dplyr::arrange(-pip) %>% 
+    dplyr::slice_head(n = 10)
+}
+
 message(" ## Will plot ", nrow(highest_pip_vars_per_cs), " highest pip per credible set signals.")
+message(" ## Starting to plot")
 for (index in 1:nrow(highest_pip_vars_per_cs)) {
   ss_oi = highest_pip_vars_per_cs[index,]
   message("index: ", index, ", intron_id: ", ss_oi$molecular_trait_id, ", variant: ", ss_oi$variant)
@@ -295,6 +260,9 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   ps_exons <- make_pseudo_exons(df_introns = cluster_introns)
   ps_exons_cdss <- make_pseudo_exons(leafcutter_metadata %>% dplyr::filter(phenotype_id %in% ss_oi$molecular_trait_id))
   
+  exons_to_plot = ps_exons
+  exon_cdss_to_plot = ps_exons_cdss
+
   variant_regions_vcf <- ss_oi %>% 
     dplyr::select(variant, chromosome, position) %>% 
     dplyr::mutate(region = paste0(chromosome,":", position, "-", position))
@@ -335,48 +303,57 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dir.create(path_plt, recursive = TRUE)
   }
   
-  # Extract the QTLs of exons according to gene and variant of interest
-  nom_exon_cc_sumstats_filt <- nom_exon_cc_sumstats %>% 
-    dplyr::filter(variant == ss_oi$variant, molecular_trait_object_id == ss_oi$gene_id) %>% 
-    dplyr::filter(rsid == rsid[1]) %>% # if variant has more than one rsid keep only the first unique rsid 
-    dplyr::mutate(exon_end = as.numeric(gsub(pattern = ".*\\_", replacement = "", x = molecular_trait_id))) %>% 
-    dplyr::mutate(exon_start = gsub(pattern = "_[^_]+$", replacement = "", x = molecular_trait_id)) %>% 
-    dplyr::mutate(exon_start = as.numeric(gsub(pattern = ".*\\_", replacement = "", x = exon_start))) %>% 
-    dplyr::mutate(exon_center = round((exon_start + exon_end) / 2)) %>% 
-    dplyr::mutate(exon_length = abs(exon_start - exon_end) + 1) %>% 
-    dplyr::mutate(exon_row_num = dplyr::row_number()) %>% 
-    dplyr::mutate(se_top = beta + se) %>% 
-    dplyr::mutate(se_bottom = beta - se) %>% 
-    dplyr::mutate(interval = ci.value * se) %>% 
-    dplyr::mutate(p_fdr = p.adjust(pvalue, method = "fdr"))
-  
-  exons_to_plot = ps_exons
-  exon_cdss_to_plot = ps_exons_cdss
-  
-  if (nrow(nom_exon_cc_sumstats_filt) > 0) {
-    nom_exon_granges <- list()
-    nom_exon_granges[[paste0("GENE:",ss_oi$gene_name)]] = GenomicRanges::GRanges(
-      seqnames = nom_exon_cc_sumstats_filt$chromosome,
-      ranges = IRanges::IRanges(start = nom_exon_cc_sumstats_filt$exon_start, end = nom_exon_cc_sumstats_filt$exon_end),
-      strand = ifelse(test = ss_oi$strand == 1, yes = "+", no = "-"),
-      mcols = data.frame(exon_id = nom_exon_cc_sumstats_filt$molecular_trait_id, 
-                         gene_id = nom_exon_cc_sumstats_filt$gene_id))
-    
-    exons_to_plot <- append(exons_to_plot, nom_exon_granges)
+  if(!is.null(nominal_exon_sumstats_path)) {
+    message(" ## Reading exon summary statistics")
+    nom_exon_cc_sumstats <- seqminer::tabix.read.table(nominal_exon_sumstats_path, variant_regions_vcf$region) 
+    colnames(nom_exon_cc_sumstats) <- sumstat_colnames
+
+    # Extract the QTLs of exons according to gene and variant of interest
+    nom_exon_cc_sumstats_filt <- nom_exon_cc_sumstats %>% 
+      dplyr::filter(variant == ss_oi$variant, molecular_trait_object_id == ss_oi$gene_id) %>% 
+      dplyr::filter(rsid == rsid[1]) %>% # if variant has more than one rsid keep only the first unique rsid 
+      dplyr::mutate(exon_end = as.numeric(gsub(pattern = ".*\\_", replacement = "", x = molecular_trait_id))) %>% 
+      dplyr::mutate(exon_start = gsub(pattern = "_[^_]+$", replacement = "", x = molecular_trait_id)) %>% 
+      dplyr::mutate(exon_start = as.numeric(gsub(pattern = ".*\\_", replacement = "", x = exon_start))) %>% 
+      dplyr::mutate(exon_center = round((exon_start + exon_end) / 2)) %>% 
+      dplyr::mutate(exon_length = abs(exon_start - exon_end) + 1) %>% 
+      dplyr::mutate(exon_row_num = dplyr::row_number()) %>% 
+      dplyr::mutate(se_top = beta + se) %>% 
+      dplyr::mutate(se_bottom = beta - se) %>% 
+      dplyr::mutate(interval = ci.value * se) %>% 
+      dplyr::mutate(p_fdr = p.adjust(pvalue, method = "fdr"))
+
+    if (nrow(nom_exon_cc_sumstats_filt) > 0) {
+      nom_exon_granges <- list()
+      nom_exon_granges[[paste0("GENE:",ss_oi$gene_name)]] = GenomicRanges::GRanges(
+        seqnames = nom_exon_cc_sumstats_filt$chromosome,
+        ranges = IRanges::IRanges(start = nom_exon_cc_sumstats_filt$exon_start, end = nom_exon_cc_sumstats_filt$exon_end),
+        strand = ifelse(test = ss_oi$strand == 1, yes = "+", no = "-"),
+        mcols = data.frame(exon_id = nom_exon_cc_sumstats_filt$molecular_trait_id, 
+                           gene_id = nom_exon_cc_sumstats_filt$gene_id))
+      
+      exons_to_plot <- append(exons_to_plot, nom_exon_granges)
+    }
   }
   
   if (!is.null(mane_transcript_gene_map_file)) {
-    MANE_transcript_oi <- mane_transcript_gene_map %>% dplyr::filter(gene_id %in% ss_oi$gene_id) %>% dplyr::pull(transcript_id)
-    mane_transcript_exons <-  make_transcript_exon_granges(gff = gtf_ref, transcript_ids = MANE_transcript_oi)
-    mane_transcript_exons_cdss <-  make_transcript_exon_granges_ccds(gff = gtf_ref, transcript_ids = MANE_transcript_oi)
+    MANE_transcript_oi <- mane_transcript_gene_map %>% 
+      dplyr::filter(gene_id %in% ss_oi$gene_id) %>% 
+      dplyr::pull(transcript_id)
 
-    # mane_transcript_exons_df <- mane_transcript_exons[[1]] %>% BiocGenerics::as.data.frame()
-    exons_to_plot <- append(exons_to_plot, mane_transcript_exons)
-    exon_cdss_to_plot <- append(exon_cdss_to_plot, mane_transcript_exons_cdss)
+    if (length(MANE_transcript_oi) > 0) {
+      mane_transcript_exons <-  make_transcript_exon_granges(gff = gtf_ref, transcript_ids = MANE_transcript_oi)
+      mane_transcript_exons_cdss <-  make_transcript_exon_granges_ccds(gff = gtf_ref, transcript_ids = MANE_transcript_oi)
+
+      # mane_transcript_exons_df <- mane_transcript_exons[[1]] %>% BiocGenerics::as.data.frame()
+      exons_to_plot <- append(exons_to_plot, mane_transcript_exons)
+      exon_cdss_to_plot <- append(exon_cdss_to_plot, mane_transcript_exons_cdss)
+    }
   }
   
   plot_rel_height = ifelse(length(ps_exons)+1 <= 5, 3, length(ps_exons)) 
-  
+  plot_rel_height = ifelse(plot_rel_height > 20, 20, plot_rel_height)  
+
   exon_plot_data <- wiggleplotr::generateTxStructurePlotData(exons = exons_to_plot,
                                                              cdss = exon_cdss_to_plot)
   intron_ss_oi_vert_lines = exon_plot_data$transcript_struct_df %>% 
@@ -399,7 +376,8 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
                                                 coverage_type = "line", 
                                                 show_genotype_legend = TRUE)
   coverage_plot <- coverage_plot + ggplot2::geom_vline(xintercept = intron_ss_oi_vert_lines, alpha = 0.5, color = "lightgrey")
-  
+
+  # permute the rows so that it becomes anonymous
   coverage_plot_data$coverage_df <- coverage_plot_data$coverage_df[sample(nrow(coverage_plot_data$coverage_df)),]
   
   if (nrow(nom_exon_cc_sumstats_filt) > 0) {
@@ -435,6 +413,17 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::left_join(track_data_study_box, by = "sample_id") %>% 
     dplyr::mutate(is_significant = intron_id == ss_oi$molecular_trait_id)
   
+  nom_cc_sumstats <- seqminer::tabix.read.table(nominal_sumstats_path, variant_regions_vcf$region) 
+  colnames(nom_cc_sumstats) <- sumstat_colnames
+  nom_cc_sumstats <- nom_cc_sumstats %>% 
+    dplyr::filter(variant %in% variant_regions_vcf$variant)
+  
+  # Keep only 1 rsid per variant per molecular_trait_id
+  nom_cc_sumstats <- nom_cc_sumstats %>% 
+    dplyr::group_by(molecular_trait_id, variant) %>% 
+    dplyr::filter(rsid == rsid[1]) %>% 
+    dplyr::ungroup()
+
   nom_cc_sumstats_filt <- nom_cc_sumstats %>% 
     dplyr::filter(variant %in% ss_oi$variant) %>% 
     dplyr::select(molecular_trait_id, pvalue, beta, se, maf) %>% 
@@ -483,25 +472,44 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dir.create(tar_path, recursive = TRUE)
   }
 
-  write_tsv(x = coverage_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
-  write_tsv(x = tx_str_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
-  write_tsv(x = track_data_study_box_wrap_for_RDS, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
-  write_tsv(x = ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
+  gzfile = gzfile(paste0(tar_path, "/coverage_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = coverage_plot_data$coverage_df, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
   
-  signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
+  gzfile = gzfile(paste0(tar_path, "/tx_str_", signal_name, ".tsv.gz"), "w")
+  write.table(x = tx_str_df, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+
+  gzfile = gzfile(paste0(tar_path, "/box_plot_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = track_data_study_box_wrap_for_RDS, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+
+  gzfile = gzfile(paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv.gz"), "w")
+  write.table(x = ss_oi, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+  # write_tsv(x = coverage_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
+  # write_tsv(x = tx_str_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
+  # write_tsv(x = track_data_study_box_wrap_for_RDS, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
+  # write_tsv(x = ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
   
-  filename_all_plt_data_tar = paste0(path_plt, "/plot_data_", signal_name,".tar.gz")
-  setwd(path_plt)
-  tar(tarfile = filename_all_plt_data_tar, files = "plot_data_tsv",
-      compression = "gzip")
-  unlink("plot_data_tsv", recursive = TRUE)
-  setwd("../..")
+  # signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
   
+  # filename_all_plt_data_tar = paste0(path_plt, "/plot_data_", signal_name,".tar.gz")
+  # setwd(path_plt)
+  # tar(tarfile = filename_all_plt_data_tar, files = "plot_data_tsv",
+  #     compression = "gzip")
+  # unlink("plot_data_tsv", recursive = TRUE)
+  # setwd("../..")
+
+  if (!individual_boxplots) {
+    next
+  }
+
+  message(" ## Plotting individual boxplots")
   for (intron_id_sel in track_data_study_box$intron_id %>% BiocGenerics::unique()) {
     nom_cc_sumstats_filt <- nom_cc_sumstats %>% 
       dplyr::filter(molecular_trait_id == intron_id_sel, variant %in% ss_oi$variant) %>% 
       dplyr::slice(1)
-    # dummy = assertthat::assert_that(nrow(nom_cc_sumstats_filt) == 1)
     
     labels <- c(paste0("P-value: ", nom_cc_sumstats_filt$pvalue, "			BETA: ", nom_cc_sumstats_filt$beta, 
                        "\nStd. Err: ", nom_cc_sumstats_filt$se, "				MAF: ", nom_cc_sumstats_filt$maf))

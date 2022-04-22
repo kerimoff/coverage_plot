@@ -95,7 +95,7 @@ if( !(workflow.runName ==~ /[a-z]+_[a-z]+/) ){
 Channel.fromPath(params.studyFile)
     .ifEmpty { error "Cannot find studyFile file in: ${params.studyFile}" }
     .splitCsv(header: true, sep: '\t', strip: true)
-    .map{row -> [ row.name_of_study, row.quant_method, row.qtl_group, file(row.susie_purity_filtered), file(row.sample_meta), file(row.bigwig_path), file(row.usage_matrix_norm), file(row.exon_summ_stats), file("${row.exon_summ_stats}.tbi"), file(row.all_summ_stats), file("${row.all_summ_stats}.tbi")]}
+    .map{row -> [ row.name_of_study, row.quant_method, row.qtl_group, file(row.susie_purity_filtered), file(row.sample_meta), file(row.bigwig_path), file(row.usage_matrix_norm), file(row.exon_summ_stats), file("${row.exon_summ_stats}.tbi"), file(row.all_summ_stats), file("${row.all_summ_stats}.tbi"), file(row.pheno_meta),]}
     .branch {
         ge: it[1] == "ge"
         exon: it[1] == "exon"
@@ -111,18 +111,6 @@ Channel.fromPath(params.studyFile)
   .map{row -> [ row.name_of_study, file(row.vcf_file) ]}
   .distinct()
   .set { vcf_file_ch }
-
-
-// study_file_ch.ge.view { "$it is ge" }
-// study_file_ch.exon.view { "$it is exon" }
-// study_file_ch.tx.view { "$it is tx" }
-
-// Channel.fromPath(params.varid_rsid_map_file)
-//     .ifEmpty { error "Cannot find varid_rsid_map_file file in: ${params.varid_rsid_map_file}" }
-//     .set { rsid_map_ch }
-
-// Batch channel
-// batch_ch = Channel.of(1..params.n_batches)
 
 // Header log info
 log.info """=======================================================
@@ -147,6 +135,7 @@ include { recap_plot_ge } from './workflows/recap_plot_ge_wf'
 include { recap_plot_tx } from './workflows/recap_plot_tx_wf'
 include { recap_plot_txrev } from './workflows/recap_plot_txrev_wf'
 include { recap_plot_exon } from './workflows/recap_plot_exon_wf'
+include { recap_plot_leafcutter } from './workflows/recap_plot_leafcutter_wf'
 include { tabix_index } from './modules/utils'
 
 workflow {
@@ -155,6 +144,7 @@ workflow {
     recap_plot_tx(study_file_ch.tx.join(tabix_index.out.collect()))
     recap_plot_txrev(study_file_ch.txrev.join(tabix_index.out.collect()))
     recap_plot_exon(study_file_ch.exon.join(tabix_index.out.collect()))
+    recap_plot_leafcutter(study_file_ch.leafcutter.join(tabix_index.out.collect()))
 }
 
 workflow.onComplete {
