@@ -297,6 +297,10 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   
   message(" ## Reading exon summary statistics")
   nom_exon_cc_sumstats <- seqminer::tabix.read.table(nominal_exon_sumstats_path, variant_regions_vcf$region) 
+    if (is.null(nom_exon_cc_sumstats) || nrow(nom_exon_cc_sumstats) == 0) {
+    message("Weirdly there are no exon summary statistics for this variant: ", variant_regions_vcf$region)
+    next
+  }
   colnames(nom_exon_cc_sumstats) <- sumstat_colnames
 
   # Extract the QTLs of exons according to gene and variant of interest
@@ -342,11 +346,11 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   if (!is.null(mane_transcript_gene_map_file)) {
     MANE_transcript_oi <- mane_transcript_gene_map %>% dplyr::filter(gene_id %in% ss_oi$gene_id) %>% dplyr::pull(transcript_id)
     mane_transcript_exons <-  make_transcript_exon_granges(gff = gtf_ref, transcript_ids = MANE_transcript_oi, add_gene = TRUE)
-    mane_transcript_exons_cdss <-  make_transcript_exon_granges_ccds(gff = gtf_ref, transcript_ids = MANE_transcript_oi, add_gene = TRUE)
+    # mane_transcript_exons_cdss <-  make_transcript_exon_granges_ccds(gff = gtf_ref, transcript_ids = MANE_transcript_oi, add_gene = TRUE)
 
     # mane_transcript_exons_df <- mane_transcript_exons[[1]] %>% BiocGenerics::as.data.frame()
     exons_to_plot <- append(exons_to_plot, mane_transcript_exons)
-    exon_cdss_to_plot <- append(exon_cdss_to_plot, mane_transcript_exons_cdss)
+    exon_cdss_to_plot <- append(exon_cdss_to_plot, mane_transcript_exons)
   }
   
   plot_rel_height = 3

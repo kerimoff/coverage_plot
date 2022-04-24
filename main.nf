@@ -95,7 +95,7 @@ if( !(workflow.runName ==~ /[a-z]+_[a-z]+/) ){
 Channel.fromPath(params.studyFile)
     .ifEmpty { error "Cannot find studyFile file in: ${params.studyFile}" }
     .splitCsv(header: true, sep: '\t', strip: true)
-    .map{row -> [ row.name_of_study, row.quant_method, row.qtl_group, file(row.susie_purity_filtered), file(row.sample_meta), file(row.bigwig_path), file(row.usage_matrix_norm), file(row.exon_summ_stats), file("${row.exon_summ_stats}.tbi"), file(row.all_summ_stats), file("${row.all_summ_stats}.tbi"), file(row.pheno_meta),]}
+    .map{row -> [ row.name_of_study, row.quant_method, row.qtl_group, file(row.susie_purity_filtered), file(row.sample_meta), file(row.bigwig_path), file(row.usage_matrix_norm), file(row.exon_summ_stats), file("${row.exon_summ_stats}.tbi"), file(row.all_summ_stats), file("${row.all_summ_stats}.tbi"), file(row.pheno_meta) ]}
     .branch {
         ge: it[1] == "ge"
         exon: it[1] == "exon"
@@ -140,11 +140,11 @@ include { tabix_index } from './modules/utils'
 
 workflow {
     tabix_index(vcf_file_ch)
-    recap_plot_ge(study_file_ch.ge.join(tabix_index.out.collect()))
-    recap_plot_tx(study_file_ch.tx.join(tabix_index.out.collect()))
-    recap_plot_txrev(study_file_ch.txrev.join(tabix_index.out.collect()))
-    recap_plot_exon(study_file_ch.exon.join(tabix_index.out.collect()))
-    recap_plot_leafcutter(study_file_ch.leafcutter.join(tabix_index.out.collect()))
+    recap_plot_ge(study_file_ch.ge.combine(tabix_index.out, by: 0))
+    recap_plot_tx(study_file_ch.tx.combine(tabix_index.out, by: 0))
+    recap_plot_txrev(study_file_ch.txrev.combine(tabix_index.out, by: 0))
+    recap_plot_exon(study_file_ch.exon.combine(tabix_index.out, by: 0))
+    recap_plot_leafcutter(study_file_ch.leafcutter.combine(tabix_index.out, by: 0))
 }
 
 workflow.onComplete {

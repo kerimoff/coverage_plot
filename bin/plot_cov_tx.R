@@ -3,7 +3,6 @@ suppressPackageStartupMessages(library("optparse"))
 
 #Parse command-line options
 option_list <- list(
-  #TODO look around if there is a package recognizing delimiter in dataset
   make_option(c("-f", "--finemap_susie"), type="character", default=NULL,
               help="Purity filtered susie output. Tab separated file", metavar = "type"),
   make_option(c("-s", "--sample_meta"), type="character", default=NULL,
@@ -50,7 +49,7 @@ suppressPackageStartupMessages(library("dplyr"))
 suppressPackageStartupMessages(library("SummarizedExperiment"))
 suppressPackageStartupMessages(library("readr"))
 suppressPackageStartupMessages(library("ggplot2"))
-library(seqminer)
+suppressPackageStartupMessages(library("seqminer"))
 
 make_transcript_exon_granges <- function(gff, transcript_ids, add_gene = FALSE) {
   exon_list <- list()
@@ -236,11 +235,14 @@ if(assertthat::assert_that(all(!is.na(phenotype_metadata$gene_id) && all(!is.na(
 susie_high_pip_with_gene <- susie_purity_filtered %>% 
   dplyr::left_join(phenotype_metadata %>% dplyr::select(-chromosome), by = c("molecular_trait_id" = "phenotype_id")) 
 
+# Get highest PIP variant for each credible set
 highest_pip_vars_per_cs <- susie_high_pip_with_gene %>% 
   dplyr::group_by(cs_id) %>% 
   dplyr::arrange(-pip) %>% 
   dplyr::slice(1) %>% 
   dplyr::ungroup()
+
+assertthat::assert_that(!is.null(nominal_exon_sumstats_path), msg = "ERROR: nominal_exon_sumstats_path is null!")
 
 if (debug_mode) {
   message(" ## Slicing 10 highest pip credible set variants for debug_mode")
@@ -306,6 +308,10 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   if(!is.null(nominal_exon_sumstats_path)) {
     message(" ## Reading exon summary statistics")
     nom_exon_cc_sumstats <- seqminer::tabix.read.table(nominal_exon_sumstats_path, variant_regions_vcf$region) 
+    if (is.null(nom_exon_cc_sumstats) || nrow(nom_exon_cc_sumstats) == 0) {
+      message("Weirdly there are no exon summary statistics for this variant: ", variant_regions_vcf$region)
+      next
+    }
     colnames(nom_exon_cc_sumstats) <- sumstat_colnames
   
     # Extract the QTLs of exons according to gene and variant of interest
@@ -339,16 +345,17 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   if (!is.null(mane_transcript_gene_map_file)) {
     MANE_transcript_oi <- mane_transcript_gene_map %>% dplyr::filter(gene_id %in% ss_oi$gene_id) %>% dplyr::pull(transcript_id)
     mane_transcript_exons <-  make_transcript_exon_granges(gff = gtf_ref, transcript_ids = MANE_transcript_oi, add_gene = TRUE)
-    mane_transcript_exons_cdss <-  make_transcript_exon_granges_ccds(gff = gtf_ref, transcript_ids = MANE_transcript_oi, add_gene = TRUE)
+    # mane_transcript_exons_cdss <-  make_transcript_exon_granges_ccds(gff = gtf_ref, transcript_ids = MANE_transcript_oi, add_gene = TRUE)
 
     # mane_transcript_exons_df <- mane_transcript_exons[[1]] %>% BiocGenerics::as.data.frame()
     exons_to_plot <- append(exons_to_plot, mane_transcript_exons)
-    exon_cdss_to_plot <- append(exon_cdss_to_plot, mane_transcript_exons_cdss)
+    exon_cdss_to_plot <- append(exon_cdss_to_plot, mane_transcript_exons)
   }
   
   plot_rel_height = ifelse(length(tx_exons)+1 <= 5, 3, length(tx_exons))
   plot_rel_height = ifelse(plot_rel_height > 20, 20, plot_rel_height)
-  
+
+  message(" ## Preparing plot data")  
   exon_plot_data <- wiggleplotr::generateTxStructurePlotData(exons = exons_to_plot,
                                                              cdss = exon_cdss_to_plot)
   
@@ -381,7 +388,9 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   
   filename_plt = paste0("cov_plot_", signal_name,".pdf")
   ggplot2::ggsave(path = path_plt, filename = filename_plt, plot = merged_plot, device = "pdf", width = 10, height = 8)
-  
+  message(" ## Saved: ", filename_plt)
+
+  message(" ## Prepare box plot data")
   # BOXPLOTS START HERE
   norm_exp_df_oi <- norm_exp_df %>% dplyr::filter(phenotype_id %in% tx_quant_pheno_ids$phenotype_id)
   norm_exp_df_oi <- tibble::column_to_rownames(.data = norm_exp_df_oi,var = "phenotype_id")
@@ -402,6 +411,7 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::left_join(track_data_study_box, by = "sample_id") %>% 
     dplyr::mutate(is_significant = tx_id == ss_oi$molecular_trait_id)
   
+  message(" ## Reading nominal summary stats with seqminer")
   nom_cc_sumstats <- seqminer::tabix.read.table(nominal_sumstats_path, variant_regions_vcf$region) 
   colnames(nom_cc_sumstats) <- sumstat_colnames
   nom_cc_sumstats <- nom_cc_sumstats %>% 

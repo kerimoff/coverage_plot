@@ -3,14 +3,13 @@ suppressPackageStartupMessages(library("optparse"))
 
 #Parse command-line options
 option_list <- list(
-  #TODO look around if there is a package recognizing delimiter in dataset
   make_option(c("-f", "--finemap_susie"), type="character", default=NULL,
               help="Purity filtered susie output. Tab separated file", metavar = "type"),
   make_option(c("-s", "--sample_meta"), type="character", default=NULL,
               help="Sample metadata file. Tab separated file", metavar = "type"),
   make_option(c("-p", "--phenotype_meta"), type="character", default=NULL,
               help="Phenotype metadata file. Tab separated file", metavar = "type"),
-    make_option(c("-q", "--qtl_group"), type="character", default=NULL,
+  make_option(c("-q", "--qtl_group"), type="character", default=NULL,
               help="The selected qtl_group in the study", metavar = "type"),
   make_option(c("-o", "--outdir"), type="character", default="./normalised_results/",
               help="Path to the output directory. [default \"%default\"]", metavar = "type"),
@@ -50,7 +49,7 @@ suppressPackageStartupMessages(library("dplyr"))
 suppressPackageStartupMessages(library("SummarizedExperiment"))
 suppressPackageStartupMessages(library("readr"))
 suppressPackageStartupMessages(library("ggplot2"))
-library(seqminer)
+suppressPackageStartupMessages(library("seqminer"))
 
 make_transcript_exon_granges <- function(gff, transcript_ids) {
   exon_list <- list()
@@ -306,6 +305,10 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   if(!is.null(nominal_exon_sumstats_path)) {
     message(" ## Reading exon summary statistics")
     nom_exon_cc_sumstats <- seqminer::tabix.read.table(nominal_exon_sumstats_path, variant_regions_vcf$region) 
+    if (is.null(nom_exon_cc_sumstats) || nrow(nom_exon_cc_sumstats) == 0) {
+      message("Weirdly there are no exon summary statistics for this variant: ", variant_regions_vcf$region)
+      next
+    }
     colnames(nom_exon_cc_sumstats) <- sumstat_colnames
   
     # Extract the QTLs of exons according to gene and variant of interest
@@ -343,17 +346,18 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
 
     if (length(MANE_transcript_oi) > 0) {
       mane_transcript_exons <-  make_transcript_exon_granges(gff = gtf_ref, transcript_ids = MANE_transcript_oi)
-      mane_transcript_exons_cdss <-  make_transcript_exon_granges_ccds(gff = gtf_ref, transcript_ids = MANE_transcript_oi)
+      # mane_transcript_exons_cdss <-  make_transcript_exon_granges_ccds(gff = gtf_ref, transcript_ids = MANE_transcript_oi)
 
       # mane_transcript_exons_df <- mane_transcript_exons[[1]] %>% BiocGenerics::as.data.frame()
       exons_to_plot <- append(exons_to_plot, mane_transcript_exons)
-      exon_cdss_to_plot <- append(exon_cdss_to_plot, mane_transcript_exons_cdss)
+      exon_cdss_to_plot <- append(exon_cdss_to_plot, mane_transcript_exons)
     }
   }
   
   plot_rel_height = ifelse(length(txrev_exons)+1 <= 5, 3, length(txrev_exons)) 
   plot_rel_height = ifelse(plot_rel_height > 20, 20, plot_rel_height)
 
+  message(" ## Preparing plot data")  
   exon_plot_data <- wiggleplotr::generateTxStructurePlotData(exons = exons_to_plot,
                                                              cdss = exon_cdss_to_plot)
   
@@ -407,6 +411,7 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::left_join(track_data_study_box, by = "sample_id") %>% 
     dplyr::mutate(is_significant = intron_id == ss_oi$molecular_trait_id)
   
+  message(" ## Reading nominal summary stats with seqminer")
   nom_cc_sumstats <- seqminer::tabix.read.table(nominal_sumstats_path, variant_regions_vcf$region) 
   colnames(nom_cc_sumstats) <- sumstat_colnames
   nom_cc_sumstats <- nom_cc_sumstats %>% 
