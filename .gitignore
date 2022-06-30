@@ -5,3 +5,4 @@ results*
 .nextflow*
 work
 singularity_img/
+vcf/
