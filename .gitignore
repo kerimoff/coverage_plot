@@ -1,5 +1,5 @@
 plot*/
-data*
+data/txrevise.all.gff3
 slurm*
 results*
 .nextflow*
