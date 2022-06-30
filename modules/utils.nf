@@ -1,6 +1,7 @@
 process tabix_index {
     tag "${name_of_study}"
     storeDir "${projectDir}/vcfs"
+    container "quay.io/biocontainers/tabix:1.11--hdfd78af_0"
 
     input:
     tuple val(name_of_study), file(vcf_file)

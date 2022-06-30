@@ -5,7 +5,7 @@ process generate_recap_plot_ge {
     publishDir "${params.outdir}/", mode: 'copy'
 
     input:
-    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(vcf_file), file(vcf_file_index)
+    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index)
     path mane_transcript_gene_map
     path mane_gtf_file
 
@@ -26,6 +26,7 @@ process generate_recap_plot_ge {
         --bigwig_path $bigwig_path \
         --mane_transcript_gene_map $mane_transcript_gene_map \
         --gtf_file $mane_gtf_file \
+        --div_scaling_factors $scaling_factors \
         --usage_matrix_norm $usage_matrix_norm \
         --exon_summ_stats $exon_summ_stats \
         --all_summ_stats $all_summ_stats \
@@ -44,7 +45,7 @@ process generate_recap_plot_tx {
     publishDir "${params.outdir}/", mode: 'copy'
 
     input:
-    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(vcf_file), file(vcf_file_index)
+    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index)
     path mane_transcript_gene_map
     path mane_gtf_file
     path tx_gtf_file
@@ -66,6 +67,7 @@ process generate_recap_plot_tx {
         --bigwig_path $bigwig_path \
         --mane_transcript_gene_map $mane_transcript_gene_map \
         --gtf_file $mane_gtf_file \
+        --div_scaling_factors $scaling_factors \
         --tx_gtf_file $tx_gtf_file \
         --usage_matrix_norm $usage_matrix_norm \
         --exon_summ_stats $exon_summ_stats \
@@ -84,7 +86,7 @@ process generate_recap_plot_txrev {
     publishDir "${params.outdir}/", mode: 'copy'
 
     input:
-    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(vcf_file), file(vcf_file_index)
+    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index)
     path mane_transcript_gene_map
     path mane_gtf_file
     path txrev_gtf_file
@@ -106,6 +108,7 @@ process generate_recap_plot_txrev {
         --bigwig_path $bigwig_path \
         --mane_transcript_gene_map $mane_transcript_gene_map \
         --gtf_file $mane_gtf_file \
+        --div_scaling_factors $scaling_factors \
         --txrev_gtf_file $txrev_gtf_file \
         --usage_matrix_norm $usage_matrix_norm \
         --exon_summ_stats $exon_summ_stats \
@@ -124,7 +127,7 @@ process generate_recap_plot_exon {
     publishDir "${params.outdir}/", mode: 'copy'
 
     input:
-    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(vcf_file), file(vcf_file_index)
+    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index)
     path mane_transcript_gene_map
     path mane_gtf_file
 
@@ -145,6 +148,7 @@ process generate_recap_plot_exon {
         --bigwig_path $bigwig_path \
         --mane_transcript_gene_map $mane_transcript_gene_map \
         --gtf_file $mane_gtf_file \
+        --div_scaling_factors $scaling_factors \
         --usage_matrix_norm $usage_matrix_norm \
         --exon_summ_stats $exon_summ_stats \
         --all_summ_stats $all_summ_stats \
@@ -162,7 +166,7 @@ process generate_recap_plot_leafcutter {
     publishDir "${params.outdir}/", mode: 'copy'
 
     input:
-    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(vcf_file), file(vcf_file_index)
+    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index)
     path mane_transcript_gene_map
     path mane_gtf_file
 
@@ -183,6 +187,7 @@ process generate_recap_plot_leafcutter {
         --bigwig_path $bigwig_path \
         --mane_transcript_gene_map $mane_transcript_gene_map \
         --gtf_file $mane_gtf_file \
+        --div_scaling_factors $scaling_factors \
         --usage_matrix_norm $usage_matrix_norm \
         --exon_summ_stats $exon_summ_stats \
         --all_summ_stats $all_summ_stats \

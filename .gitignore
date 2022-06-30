@@ -4,3 +4,4 @@ slurm*
 results*
 .nextflow*
 work
+singularity_img/
