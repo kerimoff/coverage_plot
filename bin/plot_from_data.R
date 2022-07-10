@@ -10,8 +10,9 @@ option_list <- list(
               help="tar object path containing plot data", metavar = "type"),
   make_option(c("-o", "--outdir"), type="character", default="./normalised_results/",
               help="Path to the output directory. [default \"%default\"]", metavar = "type"),
-  make_option(c("-e", "--exon_summ_stats"), type="character", default=NULL,
-              help="Full exon summary statistics file to extract exon betas", metavar = "type")
+  make_option(c("-i", "--individual_boxplots"), type="logical", 
+              action = "store_true", default=FALSE,
+              help="Flag to generate individual boxplots", metavar = "type")
 )
 
 message(" ## Parsing options")
@@ -26,8 +27,8 @@ conf.level = 0.95
 ci.value <- -qnorm( ( 1 - conf.level ) / 2 )
 
 dataTrackTheme <- function(){
-  theme = theme(axis.text.x = element_blank(), 
-                axis.title.x = element_blank(), 
+  theme = theme(axis.text.x = element_blank(),
+                axis.title.x = element_blank(),
                 axis.ticks.x = element_blank(),
                 plot.margin=unit(c(0.1,1,0.1,1),"line"),
                 legend.position="none",
@@ -38,88 +39,88 @@ dataTrackTheme <- function(){
   return(theme)
 }
 
-makeCoveragePlot_loc <- function(coverage_df, limits, 
-                                 alpha = 1, 
-                                 fill_palette = c("#a1dab4","#41b6c4","#225ea8"), 
-                                 coverage_type = "area", 
-                                 show_genotype_legend = FALSE, 
+makeCoveragePlot_loc <- function(coverage_df, limits,
+                                 alpha = 1,
+                                 fill_palette = c("#a1dab4","#41b6c4","#225ea8"),
+                                 coverage_type = "area",
+                                 show_genotype_legend = FALSE,
                                  vert_lines = NULL,
                                  vert_line_alpha = 0.3){
   coverage_max_y = max(coverage_df$coverage) + max(coverage_df$coverage) * 0.05
-  
+
   #Plot coverage over a region
-  coverage_plot = ggplot(coverage_df, aes_(~bins, ~coverage, group = ~sample_id, alpha = ~alpha)) + 
+  coverage_plot = ggplot(coverage_df, aes_(~bins, ~coverage, group = ~sample_id, alpha = ~alpha)) +
     geom_blank() +
     theme_light()
   #Choose between plotting a line and plotting area
   if(coverage_type == "line"){
-    coverage_plot = coverage_plot + 
-      geom_line(aes_(colour = ~colour_group), alpha = alpha, position = "identity") 
+    coverage_plot = coverage_plot +
+      geom_line(aes_(colour = ~colour_group), alpha = alpha, position = "identity")
   } else if (coverage_type == "area"){
-    coverage_plot = coverage_plot + 
+    coverage_plot = coverage_plot +
       geom_area(aes_(fill = ~colour_group), alpha = alpha, position = "identity")
   } else if (coverage_type == "both"){
-    coverage_plot = coverage_plot + 
+    coverage_plot = coverage_plot +
       geom_area(aes_(fill = ~colour_group), alpha = alpha, position = "identity") +
-      geom_line(aes_(colour = ~colour_group), alpha = alpha, position = "identity") 
+      geom_line(aes_(colour = ~colour_group), alpha = alpha, position = "identity")
   } else{
     stop("Coverage type not supported.")
   }
   coverage_plot = coverage_plot +
     facet_grid(track_id~.) +
-    dataTrackTheme() + 
+    dataTrackTheme() +
     scale_x_continuous(expand = c(0,0)) +
     scale_y_continuous(expand = c(0,0), limits = c(0, coverage_max_y)) +
     coord_cartesian(xlim = limits) +
     scale_color_manual(values = fill_palette) +
     scale_fill_manual(values = fill_palette) +
     ylab("FPM")
-  
+
   # Add genotype legend if show_genotype_legend
   if(show_genotype_legend) {
-    coverage_plot = coverage_plot + 
+    coverage_plot = coverage_plot +
       labs(colour = NULL) +
-      theme(legend.justification = c(1, 1), 
-            legend.position = "right", 
-            legend.direction = "vertical", 
+      theme(legend.justification = c(1, 1),
+            legend.position = "right",
+            legend.direction = "vertical",
             legend.title.align = 0, legend.box = "vertical",
             legend.key = element_rect(colour = "transparent", fill = "white"),
-            legend.margin=margin(t=0, r=0, b=0, l=0))  
+            legend.margin=margin(t=0, r=0, b=0, l=0))
   }
-  
+
   if (!is.null(vert_lines)) {
     coverage_plot <- coverage_plot + ggplot2::geom_vline(xintercept = vert_lines, alpha = vert_line_alpha, color = "lightgrey")
   }
   return(coverage_plot)
 }
 
-plotTranscriptStructure_loc <- function(exons_df, 
-                                        limits = NA, 
-                                        connect_exons = TRUE,  
-                                        xlabel = "Distance from gene start (bp)", 
-                                        transcript_label = TRUE, 
+plotTranscriptStructure_loc <- function(exons_df,
+                                        limits = NA,
+                                        connect_exons = TRUE,
+                                        xlabel = "Distance from gene start (bp)",
+                                        transcript_label = TRUE,
                                         vert_lines = NULL,
                                         vert_line_alpha = 0.3){
-  
+
   #Extract the position for plotting transcript name
-  transcript_annot = dplyr::group_by_(exons_df, ~transcript_id) %>% 
+  transcript_annot = dplyr::group_by_(exons_df, ~transcript_id) %>%
     dplyr::filter_(~feature_type == "exon") %>%
     dplyr::arrange_('transcript_id', 'start') %>%
     dplyr::filter(row_number() == 1)
-  
+
   #Create a plot of transcript structure
   plot = ggplot(exons_df) + geom_blank()
   if(connect_exons){ #Print line connecting exons
     plot = plot + geom_line(aes_(x = ~start, y = ~transcript_rank, group = ~transcript_rank, color = ~feature_type))
   }
-  plot = plot + 
-    geom_rect(aes_(xmin = ~start, 
-                   xmax = ~end, 
-                   ymax = ~transcript_rank + 0.25, 
-                   ymin = ~transcript_rank - 0.25, 
-                   fill = ~feature_type)) + 
+  plot = plot +
+    geom_rect(aes_(xmin = ~start,
+                   xmax = ~end,
+                   ymax = ~transcript_rank + 0.25,
+                   ymin = ~transcript_rank - 0.25,
+                   fill = ~feature_type)) +
     theme_light() +
-    theme(plot.margin=unit(c(0,1,1,1),"line"), 
+    theme(plot.margin=unit(c(0,1,1,1),"line"),
           axis.title.y = element_blank(),
           axis.text.y = element_blank(),
           axis.ticks.y = element_blank(),
@@ -131,20 +132,20 @@ plotTranscriptStructure_loc <- function(exons_df,
     xlab(xlabel) +
     facet_grid(type~.) +
     scale_y_continuous(expand = c(0.2,0.15)) +
-    scale_fill_manual(values = c("#2c7bb6","#abd9e9")) + 
+    scale_fill_manual(values = c("#2c7bb6","#abd9e9")) +
     scale_colour_manual(values = c("#2c7bb6","#abd9e9"))
   if(all(!is.na(limits))){
     plot = plot + scale_x_continuous(expand = c(0,0)) +
       coord_cartesian(xlim = limits)
   }
   if(transcript_label){
-    plot = plot + geom_text(aes_(x = ~start, 
-                                 y = ~transcript_rank + 0.30, 
-                                 label = ~transcript_label), 
+    plot = plot + geom_text(aes_(x = ~start,
+                                 y = ~transcript_rank + 0.30,
+                                 label = ~transcript_label),
                             data = transcript_annot, hjust = 0, vjust = 0, size = 4)
-    
+
   }
-  
+
   if (!is.null(vert_lines)) {
     plot <- plot + ggplot2::geom_vline(xintercept = vert_lines, alpha = vert_line_alpha, color = "lightgrey")
   }
@@ -153,7 +154,8 @@ plotTranscriptStructure_loc <- function(exons_df,
 
 generate_beta_plot <- function(transcript_struct_df_loc, 
                                nom_exon_cc_sumstats_filt_loc, 
-                               limits, 
+                               limits,
+                               ss_oi,
                                vert_lines = NULL,
                                vert_line_alpha = 0.3){
   exon_exp_rescaled_exons <- transcript_struct_df_loc %>% 
@@ -190,26 +192,47 @@ generate_beta_plot <- function(transcript_struct_df_loc,
   return(beta_plot)
 }
 
+prepareTranscriptStructureForPlotting <- function(exon_ranges, cds_ranges, transcript_annotations){
+  #Combine exon_ranges and cds_ranges into a single data.frame that also contains transcript rank
+  
+  #Convert exon ranges into data.frame and add transcript rank
+  exons_df = purrr::map_df(exon_ranges, data.frame, .id = "transcript_id")
+  exons_df = dplyr::mutate(exons_df, transcript_rank = as.numeric(factor(exons_df$transcript_id)), type = "")
+  transcript_rank = unique(exons_df[,c("transcript_id", "transcript_rank", "type")])
+  
+  #Convert CDS ranges into a data.frame
+  cds_df = purrr::map_df(cds_ranges, data.frame, .id = "transcript_id")
+  cds_df = dplyr::left_join(cds_df, transcript_rank, by = "transcript_id") #Add matching transcript rank
+  
+  #Join exons and cdss together
+  exons_df = dplyr::mutate(exons_df, feature_type = "exon")
+  cds_df = dplyr::mutate(cds_df, feature_type = "cds")
+  transcript_struct = rbind(exons_df, cds_df)
+  
+  #Add transcript label to transcript structure
+  transcript_struct = dplyr::left_join(transcript_struct, transcript_annotations, by = "transcript_id")
+  return(transcript_struct)
+}
+
 
 #Debugging
 if (TRUE) {
   opt = list()
-  opt$r = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/plots_data_generate/18_333143_334742_clu_4553_+&chr18_334742_C_T&ENSG00000158270/plot_data_18_333143_334742_clu_4553_+&chr18_334742_C_T&ENSG00000158270.Rds"
-  opt$t = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/plots_data_generate/18_333143_334742_clu_4553_+&chr18_334742_C_T&ENSG00000158270/plot_data_18_333143_334742_clu_4553_+&chr18_334742_C_T&ENSG00000158270.tar.gz"
-  opt$e = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/sumstats/Alasoo_2018_exon_macrophage_naive.all.tsv.gz"
-  opt$o = "/Users/kerimov/Work/temp_files/leafcutter_data/Alasoo_2018_17Feb/plots_from_data"
+  opt$r = "/Users/kerimov/Work/temp_files/debug/new/plots_sf/Alasoo_2018_macrophage_IFNg_txrev/ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523/plot_data_ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523.Rds"
+  opt$t = "/Users/kerimov/Work/temp_files/debug/new/plots_sf/Alasoo_2018_macrophage_IFNg_txrev/ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523/plot_data_ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523.tar.gz"
+  opt$o = "/Users/kerimov/Work/temp_files/debug/new/plots_sf/plots_from_data/txrev_tar"
+  opt$individual_boxplots = TRUE
 }
 
 rds_file_path = opt$r
 tar_file_path = opt$t
-nominal_exon_sumstats_path = opt$e
 output_dir = opt$o
+individual_boxplots <- opt$individual_boxplots
 
 message("######### Options: ######### ")
 message("######### Working Directory  : ", getwd())
 message("######### rds_file_path      : ", rds_file_path)
 message("######### tar_file_path      : ", tar_file_path)
-message("######### exon_sumstats      : ", nominal_exon_sumstats_path)
 message("######### output_dir         : ", output_dir)
 
 
@@ -236,83 +259,74 @@ message(" ## Starting to plot")
 if (useRds) {
   Rds_data_list <- readr::read_rds(file = rds_file_path)  
   
-  transcript_struct_df <- Rds_data_list$tx_str_df
-  limits_loc <- c(1, transcript_struct_df$limit_max[1])
-  coverage_df <- Rds_data_list$coverage_plot_df
+  coverage_data_list <- Rds_data_list$coverage_data_list
+  nom_exon_cc_sumstats_df <- Rds_data_list$nom_exon_cc_sumstats_df
   box_plot_wrap <- Rds_data_list$box_plot_wrap_df
   ss_oi <- Rds_data_list$ss_oi
+  limits_loc <- coverage_data_list$limits
   
+  tx_structure_df = prepareTranscriptStructureForPlotting(exon_ranges = coverage_data_list$tx_annotations$exon_ranges, 
+                                                          cds_ranges = coverage_data_list$tx_annotations$cds_ranges, 
+                                                          transcript_annotations = coverage_data_list$plotting_annotations)
+  
+  intron_ss_oi_vert_lines = tx_structure_df %>% 
+    dplyr::filter(transcript_id == ss_oi$molecular_trait_id, feature_type == "exon") 
+  intron_ss_oi_vert_lines <- c(intron_ss_oi_vert_lines[1,] %>% dplyr::pull(end), 
+                               intron_ss_oi_vert_lines[nrow(intron_ss_oi_vert_lines),] %>% dplyr::pull(start))
+  
+  
+  wiggle_plots <- wiggleplotr::plotCoverageData(coverage_data_list, alpha = 1, 
+                                                fill_palette = wiggleplotr::getGenotypePalette(), 
+                                                coverage_type = "line", return_subplots_list = TRUE, 
+                                                show_legend = TRUE)
+  
+  exon_plot <- wiggle_plots$tx_structure + ggplot2::geom_vline(xintercept = intron_ss_oi_vert_lines, alpha = 0.5, color = "lightgrey")
+  
+  coverage_data_list$coverage_df <- coverage_data_list$coverage_df %>% dplyr::filter(!is.na(coverage))
+  coverage_plot <- wiggle_plots$coverage_plot + ggplot2::geom_vline(xintercept = intron_ss_oi_vert_lines, alpha = 0.5, color = "lightgrey")
+  
+  # plot_rel_height = ifelse(length(tx_structure_df$transcript_id %>% unique()) <= 5, 3, length(transcript_struct_df$transcript_id %>% unique())) 
+  
+  plot_rel_height = ifelse(length(tx_structure_df$transcript_id %>% unique())-1 <= 5, 3, length(tx_structure_df$transcript_id %>% unique())) 
+  plot_rel_height = ifelse(plot_rel_height > 20, 20, plot_rel_height)  
 } else { # using TAR file to plot 
   tar_files <- untar(tarfile = tar_file_path, list = T)
   path_to_export = file.path(output_dir, gsub("\\..*","",basename(tar_file_path)))
   untar(tarfile = tar_file_path, exdir = path_to_export)
   tar_files <- file.path(path_to_export, tar_files)
-  transcript_struct_df = read_tsv(tar_files[which(grepl(pattern = "tx_str", x = tar_files))], col_types = "ciiiiccdcd", na = character())
+  
+  tx_structure_df = read_tsv(tar_files[which(grepl(pattern = "tx_str", x = tar_files))], col_types = "ciiiiccdcd", na = character())
   coverage_df = read_tsv(tar_files[which(grepl(pattern = "coverage_df", x = tar_files))], col_types = "ccidf")
-  limits_loc = c(1, transcript_struct_df$limit_max[1])
+  limits_loc = c(1, tx_structure_df$limit_max[1])
   box_plot_wrap = read_tsv(tar_files[which(grepl(pattern = "box_plot", x = tar_files))])
   ss_oi = read_tsv(tar_files[which(grepl(pattern = "ss_oi", x = tar_files))])
+  nom_exon_cc_sumstats_df = read_tsv(tar_files[which(grepl(pattern = "nom_exon_cc", x = tar_files))])
   
   unlink(path_to_export, recursive = TRUE)
+  
+  intron_ss_oi_vert_lines = tx_structure_df %>% 
+    dplyr::filter(transcript_id == ss_oi$molecular_trait_id, feature_type == "exon") 
+  intron_ss_oi_vert_lines <- c(intron_ss_oi_vert_lines[1,] %>% dplyr::pull(end), 
+                               intron_ss_oi_vert_lines[nrow(intron_ss_oi_vert_lines),] %>% dplyr::pull(start))
+  
+  coverage_plot = makeCoveragePlot_loc(coverage_df = coverage_df, 
+                                       limits = limits_loc, 
+                                       alpha = 1, 
+                                       fill_palette = wiggleplotr::getGenotypePalette(), 
+                                       coverage_type = "line", 
+                                       show_genotype_legend = TRUE,
+                                       vert_lines = intron_ss_oi_vert_lines)
+  
+  exon_plot <- plotTranscriptStructure_loc(exons_df = tx_structure_df, 
+                                           limits = limits_loc, 
+                                           vert_lines = intron_ss_oi_vert_lines)
 }
 
-
-
-intron_ss_oi_vert_lines = transcript_struct_df %>% 
-  dplyr::filter(transcript_id == ss_oi$molecular_trait_id, feature_type == "exon") 
-intron_ss_oi_vert_lines <- c(intron_ss_oi_vert_lines[1,] %>% pull(end), intron_ss_oi_vert_lines[2,] %>% pull(start))
-
-coverage_plot = makeCoveragePlot_loc(coverage_df = coverage_df, 
-                                     limits = limits_loc, 
-                                     alpha = 1, 
-                                     fill_palette = wiggleplotr::getGenotypePalette(), 
-                                     coverage_type = "line", 
-                                     show_genotype_legend = TRUE,
-                                     vert_lines = intron_ss_oi_vert_lines)
-
-exon_plot <- plotTranscriptStructure_loc(exons_df = transcript_struct_df, 
-                                         limits = limits_loc, 
-                                         vert_lines = intron_ss_oi_vert_lines)
-
-plot_rel_height = ifelse(length(transcript_struct_df$transcript_id %>% unique()) <= 5, 3, length(transcript_struct_df$transcript_id %>% unique())) 
-
-sumstat_colnames <- c("molecular_trait_id", "chromosome", "position", 
-                      "ref", "alt", "variant", "ma_samples", "maf", 
-                      "pvalue", "beta", "se", "type", "ac", "an", 
-                      "r2", "molecular_trait_object_id", "gene_id", 
-                      "median_tpm", "rsid")
-
-if(!is.null(nominal_exon_sumstats_path)) {
-  message(" ## Reading exon summary statistics")
-  variant_regions_ss <- ss_oi %>% 
-    dplyr::select(variant, chromosome, position) %>% 
-    dplyr::mutate(region = paste0(chromosome,":", position, "-", position))
-  
-  nom_exon_cc_sumstats <- seqminer::tabix.read.table(nominal_exon_sumstats_path, variant_regions_ss$region) 
-  colnames(nom_exon_cc_sumstats) <- sumstat_colnames
-  
-  # Extract the QTLs of exons according to gene and variant of interest
-  nom_exon_cc_sumstats_filt <- nom_exon_cc_sumstats %>% 
-    dplyr::filter(variant == ss_oi$variant, molecular_trait_object_id == ss_oi$gene_id) %>% 
-    dplyr::filter(rsid == rsid[1]) %>% # if variant has more than one rsid keep only the first unique rsid 
-    dplyr::mutate(n_uniq_pheno = length(unique(molecular_trait_id))) %>% 
-    dplyr::mutate(exon_end = as.numeric(gsub(pattern = ".*\\_", replacement = "", x = molecular_trait_id))) %>% 
-    dplyr::mutate(exon_start = gsub(pattern = "_[^_]+$", replacement = "", x = molecular_trait_id)) %>% 
-    dplyr::mutate(exon_start = as.numeric(gsub(pattern = ".*\\_", replacement = "", x = exon_start))) %>% 
-    dplyr::mutate(exon_center = round((exon_start + exon_end) / 2)) %>% 
-    dplyr::mutate(exon_length = abs(exon_start - exon_end) + 1) %>% 
-    dplyr::mutate(exon_row_num = dplyr::row_number()) %>% 
-    dplyr::mutate(se_top = beta + se) %>% 
-    dplyr::mutate(se_bottom = beta - se) %>% 
-    dplyr::mutate(interval = ci.value * se) %>% 
-    dplyr::mutate(p_fdr = p.adjust(pvalue, method = "fdr"))
-  
-}
-
-if (exists("nom_exon_cc_sumstats_filt") && nrow(nom_exon_cc_sumstats_filt) > 0) {
-  beta_plot <- generate_beta_plot(transcript_struct_df_loc = transcript_struct_df, 
-                                  nom_exon_cc_sumstats_filt_loc = nom_exon_cc_sumstats_filt, 
+if (exists("nom_exon_cc_sumstats_df") && nrow(nom_exon_cc_sumstats_df) > 0) {
+  beta_plot <- generate_beta_plot(transcript_struct_df_loc = tx_structure_df, 
+                                  nom_exon_cc_sumstats_filt_loc = nom_exon_cc_sumstats_df, 
                                   limits = limits_loc, 
+                                  ss_oi = ss_oi,
                                   vert_lines = intron_ss_oi_vert_lines)
   
   merged_plot <- cowplot::plot_grid(coverage_plot, beta_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, 3, plot_rel_height), ncol = 1)
@@ -330,8 +344,12 @@ ggplot2::ggsave(path = path_plt, filename = filename_plt, plot = merged_plot, de
 
 box_plot_wrap <- box_plot_wrap %>% 
   dplyr::mutate(stats_text = paste0("Pval: ", pvalue, "			BETA: ", beta, 
-                                    "\nSE: ", se)) %>% 
-  dplyr::mutate(intron_id_with_stats = paste0(intron_id, "\n", stats_text))
+                                    "\nSE: ", se)) 
+
+if (box_plot_wrap %>% hasName("tx_id")) {
+    box_plot_wrap <- box_plot_wrap %>% dplyr::mutate(intron_id = tx_id)
+}
+box_plot_wrap <- box_plot_wrap %>% dplyr::mutate(intron_id_with_stats = paste0(intron_id, "\n", stats_text))
 
 boxplot_facet <- ggplot2::ggplot(box_plot_wrap, 
                                  ggplot2::aes(x = genotype_text, 
@@ -348,4 +366,31 @@ boxplot_facet <- ggplot2::ggplot(box_plot_wrap,
 
 filename_plt_box_facet = paste0("box_facet_plot_", signal_name,".pdf")
 ggplot2::ggsave(path = path_plt, filename = filename_plt_box_facet, plot = boxplot_facet, device = "pdf", width = 10, height = 11)
+
+if (!individual_boxplots) {
+  quit()
+}
+message(" ## Plotting individual boxplots")
+
+for (intron_id_sel in box_plot_wrap$intron_id %>% BiocGenerics::unique()) {
+  nom_cc_sumstats_filt <- box_plot_wrap %>% dplyr::filter(intron_id == intron_id_sel) 
+  
+  labels <- c(paste0(unique(nom_cc_sumstats_filt$stats_text), "				MAF: ", nom_cc_sumstats_filt$maf[1]))
+  signifincance_color = ifelse(unique(nom_cc_sumstats_filt$is_significant), "#00BFC4", "#F8766D")
+  box_plot <- ggplot2::ggplot(nom_cc_sumstats_filt, 
+                              ggplot2::aes(x = genotype_text, 
+                                           y = norm_exp, 
+                                           group = genotype_text)) + 
+    ggplot2::geom_boxplot(outlier.shape = NA, color = signifincance_color) + 
+    ggplot2::geom_jitter(position = ggplot2::position_jitter(width = .2), size = 0.5, color = signifincance_color) + 
+    ggplot2::ylab(paste0(nom_cc_sumstats_filt$intron_id[1], "\nCounts Per Million")) +
+    ggplot2::xlab(nom_cc_sumstats_filt$snp_id[1]) + 
+    ggplot2::theme_light() + 
+    ggplot2::labs(subtitle = labels) +
+    ggplot2::theme(strip.text.x = ggplot2::element_text(colour = "grey10"), strip.background = ggplot2::element_rect(fill = "grey85"))
+  
+  filename_plt_box = paste0("box_plot_", gsub(pattern = ":", replacement = "_", x = intron_id_sel), "&", ss_oi$variant, "&", ss_oi$gene_id,".pdf")
+  ggplot2::ggsave(path = path_plt, filename = filename_plt_box, plot = box_plot, device = "pdf", width = 5, height = 5)
+}
+
 

@@ -137,21 +137,21 @@ generate_beta_plot <- function(transcript_struct_df_loc,
 
 prepareTranscriptStructureForPlotting <- function(exon_ranges, cds_ranges, transcript_annotations){
   #Combine exon_ranges and cds_ranges into a single data.frame that also contains transcript rank
-  
+
   #Convert exon ranges into data.frame and add transcript rank
   exons_df = purrr::map_df(exon_ranges, data.frame, .id = "transcript_id")
   exons_df = dplyr::mutate(exons_df, transcript_rank = as.numeric(factor(exons_df$transcript_id)), type = "")
   transcript_rank = unique(exons_df[,c("transcript_id", "transcript_rank", "type")])
-  
+
   #Convert CDS ranges into a data.frame
   cds_df = purrr::map_df(cds_ranges, data.frame, .id = "transcript_id")
   cds_df = dplyr::left_join(cds_df, transcript_rank, by = "transcript_id") #Add matching transcript rank
-  
+
   #Join exons and cdss together
   exons_df = dplyr::mutate(exons_df, feature_type = "exon")
   cds_df = dplyr::mutate(cds_df, feature_type = "cds")
   transcript_struct = rbind(exons_df, cds_df)
-  
+
   #Add transcript label to transcript structure
   transcript_struct = dplyr::left_join(transcript_struct, transcript_annotations, by = "transcript_id")
   return(transcript_struct)
@@ -175,6 +175,8 @@ if (FALSE) {
   opt$u = "/Users/kerimov/Work/temp_files/debug/new/Alasoo_2018.macrophage_IFNg.leafcutter_CPM_norm.tsv.gz"
   opt$a = "/Users/kerimov/Work/temp_files/debug/new/Alasoo_2018_leafcutter_macrophage_IFNg.all.tsv.gz"
   opt$e = "/Users/kerimov/Work/temp_files/debug/new/Alasoo_2018_exon_macrophage_IFNg.all.tsv.gz"
+  opt$debug_mode = TRUE
+  opt$individual_boxplots = TRUE
   index = 1
 }
 
@@ -407,32 +409,17 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
                                 coverage_type = "line", return_subplots_list = TRUE, 
                                 show_legend = TRUE)
   
-  # exon_plot_data <- wiggleplotr::generateTxStructurePlotData(exons = exons_to_plot,
-  #                                                            cdss = exon_cdss_to_plot)
   intron_ss_oi_vert_lines = tx_structure_df %>% 
     dplyr::filter(transcript_id == ss_oi$molecular_trait_id, feature_type == "exon") 
   intron_ss_oi_vert_lines <- c(intron_ss_oi_vert_lines[1,] %>% dplyr::pull(end), 
                                intron_ss_oi_vert_lines[2,] %>% dplyr::pull(start))
   
-  # exon_plot <- wiggleplotr::plotTranscriptStructure(exons_df = exon_plot_data$transcript_struct_df, limits = exon_plot_data$limits)
   exon_plot <- wiggle_plots$tx_structure + ggplot2::geom_vline(xintercept = intron_ss_oi_vert_lines, alpha = 0.5, color = "lightgrey")
   
-  # coverage_plot_data = wiggleplotr::generateCoveragePlotData(exons = exons_to_plot, 
-  #                                                            cdss = exon_cdss_to_plot, 
-  #                                                            plot_fraction = 0.2,
-  #                                                            track_data = track_data_study)
-  
   coverage_data_list$coverage_df <- coverage_data_list$coverage_df %>% dplyr::filter(!is.na(coverage))
-  # coverage_plot = wiggleplotr::makeCoveragePlot(coverage_df = coverage_plot_data$coverage_df, 
-  #                                               limits = coverage_plot_data$limits, 
-  #                                               alpha = 1, 
-  #                                               fill_palette = wiggleplotr::getGenotypePalette(), 
-  #                                               coverage_type = "line", 
-  #                                               show_legend = TRUE)
   coverage_plot <- wiggle_plots$coverage_plot + ggplot2::geom_vline(xintercept = intron_ss_oi_vert_lines, alpha = 0.5, color = "lightgrey")
 
   if (nrow(nom_exon_cc_sumstats_filt) > 0) {
-    # exons_structure_df <- coverage_data_list$tx_annotations$exon_ranges[[paste0("GENE:", ss_oi$gene_name)]] %>% BiocGenerics::as.data.frame()
     beta_plot <- generate_beta_plot(transcript_struct_df_loc = tx_structure_df, 
                                     nom_exon_cc_sumstats_filt_loc = nom_exon_cc_sumstats_filt,
                                     limits = coverage_data_list$limits,
@@ -518,13 +505,13 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   
   
   tx_str_df <- tx_structure_df %>% dplyr::mutate(limit_max = max(coverage_data_list$limits))
-  Rds_list <- list(coverage_plot_df = coverage_data_list$coverage_df, ss_oi = ss_oi)
-  Rds_list[["tx_str_df"]] <- tx_str_df
+  Rds_list <- list(coverage_data_list = coverage_data_list, ss_oi = ss_oi)
+  Rds_list[["nom_exon_cc_sumstats_df"]] <- nom_exon_cc_sumstats_filt
   Rds_list[["box_plot_wrap_df"]] <- track_data_study_box_wrap_for_RDS
   Rds_plot_file_name <- paste0(path_plt, "/plot_data_", signal_name,".Rds")
   saveRDS(object = Rds_list, compress = "gzip", file = Rds_plot_file_name)
   
-  tar_path = paste0(path_plt, "/plot_data_tsv/")
+  tar_path = "./plot_data_tsv"
   if (!dir.exists(tar_path)){
     dir.create(tar_path, recursive = TRUE)
   }
@@ -544,19 +531,23 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   gzfile = gzfile(paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv.gz"), "w")
   write.table(x = ss_oi, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
   close(gzfile)
-  # write_tsv(x = coverage_plot_data$coverage_df, file = paste0(tar_path, "/coverage_df_", signal_name, ".tsv") )
-  # write_tsv(x = tx_str_df, file = paste0(tar_path, "/tx_str_", signal_name, ".tsv") )
-  # write_tsv(x = track_data_study_box_wrap_for_RDS, file = paste0(tar_path, "/box_plot_df_", signal_name, ".tsv") )
-  # write_tsv(x = ss_oi, file = paste0(tar_path, "/ss_oi_df_", signal_name, ".tsv") )
   
-  # signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
+  nom_exon_cc_sumstats_filt <- nom_exon_cc_sumstats_filt %>% 
+    mutate(rsid = stringr::str_trim(rsid))
   
-  # filename_all_plt_data_tar = paste0(path_plt, "/plot_data_", signal_name,".tar.gz")
+  gzfile = gzfile(paste0(tar_path, "/nom_exon_cc_", signal_name, ".tsv.gz"), "w")
+  write.table(x = nom_exon_cc_sumstats_filt, file = gzfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gzfile)
+  
+  signal_name <- gsub(pattern = "&", replacement = "\\&", x = signal_name)
+  
+  filename_all_plt_data_tar = paste0(path_plt, "/plot_data_", signal_name,".tar.gz")
+  # prev_wd <- getwd()
   # setwd(path_plt)
-  # tar(tarfile = filename_all_plt_data_tar, files = "plot_data_tsv",
-  #     compression = "gzip")
-  # unlink("plot_data_tsv", recursive = TRUE)
-  # setwd("../..")
+  tar(tarfile = filename_all_plt_data_tar, files = "plot_data_tsv",
+      compression = "gzip")
+  unlink("plot_data_tsv", recursive = TRUE)
+  # setwd(prev_wd)
 
   if (!individual_boxplots) {
     next
