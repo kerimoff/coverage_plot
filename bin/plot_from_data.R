@@ -216,7 +216,7 @@ prepareTranscriptStructureForPlotting <- function(exon_ranges, cds_ranges, trans
 
 
 #Debugging
-if (TRUE) {
+if (FALSE) {
   opt = list()
   opt$r = "/Users/kerimov/Work/temp_files/debug/new/plots_sf/Alasoo_2018_macrophage_IFNg_txrev/ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523/plot_data_ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523.Rds"
   opt$t = "/Users/kerimov/Work/temp_files/debug/new/plots_sf/Alasoo_2018_macrophage_IFNg_txrev/ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523/plot_data_ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523.tar.gz"
@@ -320,6 +320,9 @@ if (useRds) {
   exon_plot <- plotTranscriptStructure_loc(exons_df = tx_structure_df, 
                                            limits = limits_loc, 
                                            vert_lines = intron_ss_oi_vert_lines)
+
+  plot_rel_height = ifelse(length(tx_structure_df$transcript_id %>% unique())-1 <= 5, 3, length(tx_structure_df$transcript_id %>% unique())) 
+  plot_rel_height = ifelse(plot_rel_height > 20, 20, plot_rel_height)  
 }
 
 if (exists("nom_exon_cc_sumstats_df") && nrow(nom_exon_cc_sumstats_df) > 0) {
