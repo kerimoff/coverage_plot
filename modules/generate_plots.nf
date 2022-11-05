@@ -1,19 +1,19 @@
-
 process generate_recap_plot_ge {
     tag "${name_of_study}_${qtl_group}_${quant_method}"
     label "process_medium"
-    publishDir "${params.outdir}/", mode: 'copy'
+    publishDir "${params.outdir}/", mode: 'copy', overwrite: true, pattern: "${name_of_study}_${qtl_group}_${quant_method}/*"
+    publishDir "${params.outdir}/logs/${name_of_study}_${qtl_group}_${quant_method}/", mode: 'copy', overwrite: true, pattern: "*.log"
 
     input:
-    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index)
+    tuple val(name_of_study), val(quant_method), val(qtl_group), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index), file(susie_purity_filtered)
     path mane_transcript_gene_map
     path mane_gtf_file
 
     output:
-    path "${name_of_study}_${qtl_group}_${quant_method}"
+    path "${name_of_study}_${qtl_group}_${quant_method}/*"
+    path "${name_of_study}_${qtl_group}_${quant_method}_${susie_purity_filtered.simpleName}.log"
 
     script:
-    debug_mode_check = params.debug_mode ? "--debug_mode" : ""
     individual_boxplots_check = params.individual_boxplots ? "--individual_boxplots" : ""
     """
     Rscript $projectDir/bin/plot_cov_ge.R \
@@ -31,30 +31,29 @@ process generate_recap_plot_ge {
         --exon_summ_stats $exon_summ_stats \
         --all_summ_stats $all_summ_stats \
         --outdir ${name_of_study}_${qtl_group}_${quant_method} \
-        $debug_mode_check \
         $individual_boxplots_check 
 
-    cp .command.log ./${name_of_study}_${qtl_group}_${quant_method}/${name_of_study}_${qtl_group}_${quant_method}.log
+    cp .command.log ${name_of_study}_${qtl_group}_${quant_method}_${susie_purity_filtered.simpleName}.log
     """
 }
-
 
 process generate_recap_plot_tx {
     tag "${name_of_study}_${qtl_group}_${quant_method}"
     label "process_medium"
-    publishDir "${params.outdir}/", mode: 'copy'
+    publishDir "${params.outdir}/", mode: 'copy', overwrite: true, pattern: "${name_of_study}_${qtl_group}_${quant_method}/*"
+    publishDir "${params.outdir}/logs/${name_of_study}_${qtl_group}_${quant_method}/", mode: 'copy', overwrite: true, pattern: "*.log"
 
     input:
-    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index)
+    tuple val(name_of_study), val(quant_method), val(qtl_group), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index), file(susie_purity_filtered)
     path mane_transcript_gene_map
     path mane_gtf_file
     path tx_gtf_file
 
     output:
-    path "${name_of_study}_${qtl_group}_${quant_method}"
+    path "${name_of_study}_${qtl_group}_${quant_method}/*"
+    path "${name_of_study}_${qtl_group}_${quant_method}_${susie_purity_filtered.simpleName}.log"
 
     script:
-    debug_mode_check = params.debug_mode ? "--debug_mode" : ""
     individual_boxplots_check = params.individual_boxplots ? "--individual_boxplots" : ""
     """
     Rscript $projectDir/bin/plot_cov_tx.R \
@@ -73,29 +72,29 @@ process generate_recap_plot_tx {
         --exon_summ_stats $exon_summ_stats \
         --all_summ_stats $all_summ_stats \
         --outdir ${name_of_study}_${qtl_group}_${quant_method} \
-        $debug_mode_check \
         $individual_boxplots_check 
 
-    cp .command.log ./${name_of_study}_${qtl_group}_${quant_method}/${name_of_study}_${qtl_group}_${quant_method}.log
+    cp .command.log ${name_of_study}_${qtl_group}_${quant_method}_${susie_purity_filtered.simpleName}.log
     """
 }
 
 process generate_recap_plot_txrev {
     tag "${name_of_study}_${qtl_group}_${quant_method}"
     label "process_medium"
-    publishDir "${params.outdir}/", mode: 'copy'
+    publishDir "${params.outdir}/", mode: 'copy', overwrite: true, pattern: "${name_of_study}_${qtl_group}_${quant_method}/*"
+    publishDir "${params.outdir}/logs/${name_of_study}_${qtl_group}_${quant_method}/", mode: 'copy', overwrite: true, pattern: "*.log"
 
     input:
-    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index)
+    tuple val(name_of_study), val(quant_method), val(qtl_group), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index), file(susie_purity_filtered)
     path mane_transcript_gene_map
     path mane_gtf_file
     path txrev_gtf_file
 
     output:
-    path "${name_of_study}_${qtl_group}_${quant_method}"
+    path "${name_of_study}_${qtl_group}_${quant_method}/*"
+    path "${name_of_study}_${qtl_group}_${quant_method}_${susie_purity_filtered.simpleName}.log"
 
     script:
-    debug_mode_check = params.debug_mode ? "--debug_mode" : ""
     individual_boxplots_check = params.individual_boxplots ? "--individual_boxplots" : ""
     """
     Rscript $projectDir/bin/plot_cov_txrev.R \
@@ -114,28 +113,28 @@ process generate_recap_plot_txrev {
         --exon_summ_stats $exon_summ_stats \
         --all_summ_stats $all_summ_stats \
         --outdir ${name_of_study}_${qtl_group}_${quant_method} \
-        $debug_mode_check \
         $individual_boxplots_check 
 
-    cp .command.log ./${name_of_study}_${qtl_group}_${quant_method}/${name_of_study}_${qtl_group}_${quant_method}.log
+        cp .command.log ${name_of_study}_${qtl_group}_${quant_method}_${susie_purity_filtered.simpleName}.log
     """
 }
 
 process generate_recap_plot_exon {
     tag "${name_of_study}_${qtl_group}_${quant_method}"
     label "process_medium"
-    publishDir "${params.outdir}/", mode: 'copy'
+    publishDir "${params.outdir}/", mode: 'copy', overwrite: true, pattern: "${name_of_study}_${qtl_group}_${quant_method}/*"
+    publishDir "${params.outdir}/logs/${name_of_study}_${qtl_group}_${quant_method}/", mode: 'copy', overwrite: true, pattern: "*.log"
 
     input:
-    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index)
+    tuple val(name_of_study), val(quant_method), val(qtl_group), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index), file(susie_purity_filtered)
     path mane_transcript_gene_map
     path mane_gtf_file
 
     output:
-    path "${name_of_study}_${qtl_group}_${quant_method}"
+    path "${name_of_study}_${qtl_group}_${quant_method}/*"
+    path "${name_of_study}_${qtl_group}_${quant_method}_${susie_purity_filtered.simpleName}.log"
 
     script:
-    debug_mode_check = params.debug_mode ? "--debug_mode" : ""
     individual_boxplots_check = params.individual_boxplots ? "--individual_boxplots" : ""
     """
     Rscript $projectDir/bin/plot_cov_exon.R \
@@ -153,28 +152,28 @@ process generate_recap_plot_exon {
         --exon_summ_stats $exon_summ_stats \
         --all_summ_stats $all_summ_stats \
         --outdir ${name_of_study}_${qtl_group}_${quant_method} \
-        $debug_mode_check \
         $individual_boxplots_check 
 
-    cp .command.log ./${name_of_study}_${qtl_group}_${quant_method}/${name_of_study}_${qtl_group}_${quant_method}.log
+    cp .command.log ${name_of_study}_${qtl_group}_${quant_method}_${susie_purity_filtered.simpleName}.log
     """
 }
 
 process generate_recap_plot_leafcutter {
     tag "${name_of_study}_${qtl_group}_${quant_method}"
     label "process_medium"
-    publishDir "${params.outdir}/", mode: 'copy'
+    publishDir "${params.outdir}/", mode: 'copy', overwrite: true, pattern: "${name_of_study}_${qtl_group}_${quant_method}/*"
+    publishDir "${params.outdir}/logs/${name_of_study}_${qtl_group}_${quant_method}/", mode: 'copy', overwrite: true, pattern: "*.log"
 
     input:
-    tuple val(name_of_study), val(quant_method), val(qtl_group), file(susie_purity_filtered), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index)
+    tuple val(name_of_study), val(quant_method), val(qtl_group), file(sample_meta), file(bigwig_path), file(usage_matrix_norm), file(exon_summ_stats), file(exon_summ_stats_index), file(all_summ_stats), file(all_summ_stats_index), file(phenotype_meta), file(scaling_factors), file(vcf_file), file(vcf_file_index), file(susie_purity_filtered)
     path mane_transcript_gene_map
     path mane_gtf_file
 
     output:
-    path "${name_of_study}_${qtl_group}_${quant_method}"
+    path "${name_of_study}_${qtl_group}_${quant_method}/*"
+    path "${name_of_study}_${qtl_group}_${quant_method}_${susie_purity_filtered.simpleName}.log"
 
     script:
-    debug_mode_check = params.debug_mode ? "--debug_mode" : ""
     individual_boxplots_check = params.individual_boxplots ? "--individual_boxplots" : ""
     """
     Rscript $projectDir/bin/plot_cov_leafcutter.R \
@@ -192,9 +191,8 @@ process generate_recap_plot_leafcutter {
         --exon_summ_stats $exon_summ_stats \
         --all_summ_stats $all_summ_stats \
         --outdir ${name_of_study}_${qtl_group}_${quant_method} \
-        $debug_mode_check \
         $individual_boxplots_check 
 
-    cp .command.log ./${name_of_study}_${qtl_group}_${quant_method}/${name_of_study}_${qtl_group}_${quant_method}.log
+    cp .command.log ${name_of_study}_${qtl_group}_${quant_method}_${susie_purity_filtered.simpleName}.log
     """
 }

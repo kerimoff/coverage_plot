@@ -35,10 +35,7 @@ option_list <- list(
               help="Local path to wiggleplotr package", metavar = "type"),
   make_option(c("-i", "--individual_boxplots"), type="logical", 
               action = "store_true", default=FALSE,
-              help="Flag to generate individual boxplots", metavar = "type"),
-  make_option(c("-d", "--debug_mode"), type="logical", 
-              action = "store_true", default=FALSE,
-              help="If to run the script in debug mode", metavar = "type")
+              help="Flag to generate individual boxplots", metavar = "type")
 )
 
 message(" ## Parsing options")
@@ -163,7 +160,6 @@ if (FALSE) {
   opt$a = "/Users/kerimov/Work/temp_files/txrevise_stuff/Alasoo_2018_3Apr/sumstats/Alasoo_2018_ge_macrophage_IFNg.all.tsv.gz"
   opt$e = "/Users/kerimov/Work/temp_files/txrevise_stuff/Alasoo_2018_3Apr/sumstats/Alasoo_2018_exon_macrophage_IFNg.all.tsv.gz"
   opt$w = "/Users/kerimov/Work/R_env/wiggleplotr/"
-  opt$debug_mode = TRUE
   opt$individual_boxplots = TRUE
   index = 1
 }
@@ -184,8 +180,6 @@ scaling_factors_path = opt$div_scaling_factors
 nominal_exon_sumstats_path = opt$e
 wiggleplotr_path = opt$w
 individual_boxplots = opt$individual_boxplots
-debug_mode = opt$debug_mode
-
 
 message("######### Options: ######### ")
 message("######### Working Directory  : ", getwd())
@@ -205,7 +199,6 @@ message("######### nominal_sumstats   : ", nominal_sumstats_path)
 message("######### exon_sumstats      : ", nominal_exon_sumstats_path)
 message("######### wiggleplotr_path   : ", wiggleplotr_path)
 message("######### individual_boxplots: ", individual_boxplots)
-message("######### debug_mode         : ", debug_mode)
 
 if (!is.null(wiggleplotr_path)) {
   devtools::load_all(wiggleplotr_path)
@@ -221,7 +214,13 @@ sumstat_colnames <- c("molecular_trait_id", "chromosome", "position",
                       "r2", "molecular_trait_object_id", "gene_id", 
                       "median_tpm", "rsid")
 
+time_here <- function(prev_time, message_text = "Time in this point: "){
+  message(message_text, Sys.time() - prev_time)
+  return(Sys.time())
+}
+
 ###############################################################
+start_time <- Sys.time()
 
 message(" ## Reading GTF file for MANE")
 gtf_ref <- rtracklayer::import(gtf_file_path, 
@@ -236,7 +235,7 @@ message(" ## Reading mane_transcript_gene_map file")
 mane_transcript_gene_map <- readr::read_tsv(mane_transcript_gene_map_file)
 
 message(" ## Reading susie_purity_filtered file")
-susie_purity_filtered <- readr::read_tsv(file = susie_file_path, col_types = "cccicccccdddddddd")
+highest_pip_vars_per_cs <- readr::read_tsv(file = susie_file_path, col_types = "cccicccccddddddddcccddccccd")
 
 message(" ## Reading normalised usage matrix")
 norm_exp_df <- readr::read_tsv(norm_usage_matrix_path)
@@ -246,6 +245,8 @@ phenotype_metadata <- readr::read_tsv(phenotype_meta_path, col_types = "cccccddi
 
 message(" ## Reading scaling_factors file")
 scaling_factor_data <- readr::read_tsv(scaling_factors_path, col_types = "cd") 
+
+start_time <- time_here(prev_time = start_time, message_text = " >> Read input TSVs in: ")
 
 if (is.null(study_name)) { 
   assertthat::has_name(sample_metadata, "study" )
@@ -257,29 +258,80 @@ if(assertthat::assert_that(all(!is.na(phenotype_metadata$gene_id) && all(!is.na(
   message("All the phenotypes in phenotype_metadata has properly assigned to a certain gene!")
 }
 
-susie_high_pip_with_gene <- susie_purity_filtered %>% 
-  dplyr::left_join(phenotype_metadata %>% dplyr::select(-chromosome), by = c("molecular_trait_id" = "phenotype_id")) 
+# susie_high_pip_with_gene <- susie_purity_filtered %>% 
+#   dplyr::left_join(phenotype_metadata %>% dplyr::select(-chromosome), by = c("molecular_trait_id" = "phenotype_id")) 
 
-# Get highest PIP variant for each credible set
-highest_pip_vars_per_cs <- susie_high_pip_with_gene %>% 
-  dplyr::group_by(cs_id) %>% 
-  dplyr::arrange(-pip) %>% 
-  dplyr::slice(1) %>% 
-  dplyr::ungroup()
+# # Get highest PIP variant for each credible set
+# highest_pip_vars_per_cs <- susie_high_pip_with_gene %>% 
+#   dplyr::group_by(cs_id) %>% 
+#   dplyr::arrange(-pip) %>% 
+#   dplyr::slice(1) %>% 
+#   dplyr::ungroup()
 
-assertthat::assert_that(!is.null(nominal_exon_sumstats_path), msg = "ERROR: nominal_exon_sumstats_path is null!")
+# assertthat::assert_that(!is.null(nominal_exon_sumstats_path), msg = "ERROR: nominal_exon_sumstats_path is null!")
 
-if (debug_mode) {
-  message(" ## Slicing 10 highest pip credible set variants for debug_mode")
-  highest_pip_vars_per_cs <- highest_pip_vars_per_cs %>% 
-    dplyr::arrange(-pip) %>% 
-    dplyr::slice_head(n = 10)
+# if (debug_mode) {
+#   message(" ## Slicing 10 highest pip credible set variants for debug_mode")
+#   highest_pip_vars_per_cs <- highest_pip_vars_per_cs %>% 
+#     dplyr::arrange(-pip) %>% 
+#     dplyr::slice_head(n = 10)
+# }
+
+variant_regions_vcf <- highest_pip_vars_per_cs %>% 
+  dplyr::select(variant, chromosome, position) %>% 
+  dplyr::mutate(region = paste0(chromosome,":", position, "-", position))
+
+message(" ## Reading exon summary statistics")
+nom_exon_cc_sumstats_all <- seqminer::tabix.read.table(nominal_exon_sumstats_path, variant_regions_vcf$region) 
+colnames(nom_exon_cc_sumstats_all) <- sumstat_colnames
+if (is.null(nom_exon_cc_sumstats_all) || nrow(nom_exon_cc_sumstats_all) == 0) {
+  message("Exiting! Weirdly there are no exon summary statistics for this variant: ", variant_regions_vcf$region)
+  if (!dir.exists(output_dir)){
+    dir.create(output_dir, recursive = TRUE)
+  }
 }
 
-message(" ## Will plot ", nrow(highest_pip_vars_per_cs), " highest pip per credible set signals.")
+colnames(nom_exon_cc_sumstats_all) <- sumstat_colnames
+if (nrow(highest_pip_vars_per_cs) == 10) {
+  dir.create("debug")
+  readr::write_tsv(nom_exon_cc_sumstats_all, "debug/nom_exon_cc_sumstats_all.tsv")
+}
+message(" ## Reading exon summary statistics complete")
+
+message(" ## Reading all variants from VCF_file")
+snps_all <- seqminer::tabix.read.table(vcf_file_path, variant_regions_vcf$region)
+if (study_name == "Steinberg_2020") {
+  names(snps_all) <- gsub(pattern = ".", replacement = ":", x = names(snps_all), fixed = T)
+}
+if (study_name == "Quach_2016") {
+  names(snps_all) <- gsub(pattern = ".", replacement = "@", x = names(snps_all), fixed = T)
+}
+if (study_name %in% c("Schmiedel_2018", "Bossini-Castillo_2019", "ROSMAP", "iPSCORE")) {
+  names(snps_all) <- gsub(pattern = "X", replacement = "", x = names(snps_all), fixed = T)  
+}
+if (study_name %in% c("iPSCORE")) {
+  names(snps_all) <- gsub(pattern = ".", replacement = "-", x = names(snps_all), fixed = T)  
+}
+message(" ## Reading all variants from VCF_file complete")
+
+message(" ## Reading phenotype nominal summary statistics")
+nom_cc_sumstats_all <- seqminer::tabix.read.table(nominal_sumstats_path, variant_regions_vcf$region) 
+colnames(nom_cc_sumstats_all) <- sumstat_colnames
+if (nrow(highest_pip_vars_per_cs) == 10) {
+  readr::write_tsv(nom_cc_sumstats_all, "debug/nom_cc_sumstats_all.tsv")
+}
+message(" ## Reading phenotype nominal summary statistics complete")
+
+start_time <- time_here(prev_time = start_time, message_text = " >> seqminer tabix took: ")
+
+message(" ## Will plot batch of ", nrow(highest_pip_vars_per_cs), " highest pip per credible set signals.")
 message(" ## Starting to plot")
 
 for (index in 1:nrow(highest_pip_vars_per_cs)) {
+  if (!dir.exists(output_dir)){
+    dir.create(output_dir, recursive = TRUE)
+  }
+  start_time = Sys.time()
   ss_oi = highest_pip_vars_per_cs[index,]
   message("index: ", index, ", gene_phenotype_id: ", ss_oi$molecular_trait_id, ", variant: ", ss_oi$variant)
   
@@ -289,29 +341,65 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::select(variant, chromosome, position) %>% 
     dplyr::mutate(region = paste0(chromosome,":", position, "-", position))
   snps <- seqminer::tabix.read.table(vcf_file_path, variant_regions_vcf$region)
-  snps_filt <- snps %>% 
+  snps_filt <- snps_all %>% 
     dplyr::filter(ID %in% variant_regions_vcf$variant) %>% 
     dplyr::arrange(CHROM, POS)
   
-  var_genotype <- snps_filt %>% 
-    dplyr::select(-c("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT")) %>% 
-    base::t() %>% 
-    BiocGenerics::as.data.frame() %>% 
-    dplyr::rename("GT_DS" = "V1") %>% 
-    dplyr::mutate(GT = gsub(pattern = "\\:.*", replacement = "", x = GT_DS)) %>% 
-    dplyr::mutate(REF = gsub(pattern = "\\|.*", replacement = "", x = GT)) %>% 
-    dplyr::mutate(ALT = gsub(pattern = ".*\\|", replacement = "", x = GT)) %>% 
-    dplyr::mutate(DS = as.numeric(REF) + as.numeric(ALT)) %>% 
-    dplyr::mutate(genotype_id = BiocGenerics::rownames(.)) %>% 
-    dplyr::mutate(genotype_id = gsub(pattern = "\\.", replacement = "-", x = genotype_id)) %>%
-    left_join(sample_metadata %>% dplyr::select(sample_id, genotype_id, qtl_group), by = "genotype_id")
+  # var_genotype <- snps_filt %>% 
+  #   dplyr::select(-c("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT")) %>% 
+  #   base::t() %>% 
+  #   BiocGenerics::as.data.frame() %>% 
+  #   dplyr::rename("GT_DS" = "V1") %>% 
+  #   dplyr::mutate(GT = gsub(pattern = "\\:.*", replacement = "", x = GT_DS)) %>% 
+  #   dplyr::mutate(REF = gsub(pattern = "\\|.*", replacement = "", x = GT)) %>% 
+  #   dplyr::mutate(ALT = gsub(pattern = ".*\\|", replacement = "", x = GT)) %>% 
+  #   dplyr::mutate(DS = as.numeric(REF) + as.numeric(ALT)) %>% 
+  #   dplyr::mutate(genotype_id = BiocGenerics::rownames(.)) %>% 
+  #   dplyr::mutate(genotype_id = gsub(pattern = "\\.", replacement = "-", x = genotype_id)) %>%
+  #   left_join(sample_metadata %>% dplyr::select(sample_id, genotype_id, qtl_group), by = "genotype_id")
   
+  if (study_name == "Lepik_2017") {
+    var_genotype <- snps_filt %>% 
+      dplyr::select(-c("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT")) %>% 
+      base::t() %>% 
+      BiocGenerics::as.data.frame() %>% 
+      dplyr::rename("GT_DS" = "V1") %>% 
+      dplyr::mutate(GT = gsub(pattern = "\\:.*", replacement = "", x = GT_DS)) %>% 
+      dplyr::mutate(REF = gsub(pattern = "\\/.*", replacement = "", x = GT)) %>% 
+      dplyr::mutate(ALT = gsub(pattern = ".*\\/", replacement = "", x = GT)) %>% 
+      dplyr::mutate(DS = as.numeric(REF) + as.numeric(ALT)) %>% 
+      dplyr::mutate(genotype_id = BiocGenerics::rownames(.)) %>% 
+      dplyr::mutate(genotype_id = gsub(pattern = "\\.", replacement = "-", x = genotype_id))
+  } else  {
+    var_genotype <- snps_filt %>% 
+      dplyr::select(-c("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT")) %>% 
+      base::t() %>% 
+      BiocGenerics::as.data.frame() %>% 
+      dplyr::rename("GT_DS" = "V1") %>% 
+      dplyr::mutate(GT = gsub(pattern = "\\:.*", replacement = "", x = GT_DS)) %>% 
+      dplyr::mutate(REF = gsub(pattern = "\\|.*", replacement = "", x = GT)) %>% 
+      dplyr::mutate(ALT = gsub(pattern = ".*\\|", replacement = "", x = GT)) %>% 
+      dplyr::mutate(DS = as.numeric(REF) + as.numeric(ALT)) %>% 
+      dplyr::mutate(genotype_id = BiocGenerics::rownames(.)) %>% 
+      dplyr::mutate(genotype_id = gsub(pattern = "\\.", replacement = "-", x = genotype_id))
+  }
+
+  sample_meta_clean = sample_metadata %>% 
+    dplyr::filter(rna_qc_passed, genotype_qc_passed) %>%  
+    dplyr::select(sample_id, genotype_id, qtl_group)
+  
+  var_genotype <- sample_meta_clean %>% 
+    left_join(var_genotype, by = "genotype_id")
+
   bigwig_files <- list.files(bigwig_files_path, full.names = T)
   
-  track_data_study <- data.frame(file_name = (gsub(pattern = paste0(bigwig_files_path, "/"), replacement = "", x = bigwig_files)),
+  track_data_study <- data.frame(file_name = (gsub(pattern = paste0(bigwig_files_path, "/"), replacement = "", x = bigwig_files, fixed = T)),
                                   bigWig = bigwig_files)
-  track_data_study <- track_data_study %>% dplyr::mutate(sample_id = gsub(pattern = ".bigwig", replacement = "", x = file_name))
   
+  track_data_study <- track_data_study %>% 
+    dplyr::mutate(sample_id = gsub(pattern = ".bigwig", replacement = "", x = file_name)) %>% 
+    dplyr::filter(sample_id %in% sample_meta_clean$sample_id)
+    
   track_data_study <-track_data_study %>% 
     dplyr::left_join(var_genotype %>% dplyr::select(sample_id, qtl_group, DS), by = c("sample_id")) %>% 
     dplyr::left_join(scaling_factor_data) %>% 
@@ -321,23 +409,17 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::select(sample_id, scaling_factor, bigWig, track_id, colour_group, qtl_group) %>% 
     dplyr::filter(qtl_group==qtl_group_in)
   
-  # Generate the output path 
-  signal_name <- paste0(gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "___", ss_oi$variant)
-  path_plt = file.path(output_dir, signal_name)
-  if (!dir.exists(path_plt)){
-    dir.create(path_plt, recursive = TRUE)
-  }
+  # message(" ## Reading exon summary statistics")
+  # nom_exon_cc_sumstats <- seqminer::tabix.read.table(nominal_exon_sumstats_path, variant_regions_vcf$region) 
+  # if (is.null(nom_exon_cc_sumstats) || nrow(nom_exon_cc_sumstats) == 0) {
+  #   message("Weirdly there are no exon summary statistics for this variant: ", variant_regions_vcf$region)
+  #   next
+  # }
+  # colnames(nom_exon_cc_sumstats) <- sumstat_colnames
+  start_time <- time_here(prev_time = start_time, message_text = " >> prepared track_data_study in: ")
   
-  message(" ## Reading exon summary statistics")
-  nom_exon_cc_sumstats <- seqminer::tabix.read.table(nominal_exon_sumstats_path, variant_regions_vcf$region) 
-  if (is.null(nom_exon_cc_sumstats) || nrow(nom_exon_cc_sumstats) == 0) {
-    message("Weirdly there are no exon summary statistics for this variant: ", variant_regions_vcf$region)
-    next
-  }
-  colnames(nom_exon_cc_sumstats) <- sumstat_colnames
-
   # Extract the QTLs of exons according to gene and variant of interest
-  nom_exon_cc_sumstats_filt <- nom_exon_cc_sumstats %>% 
+  nom_exon_cc_sumstats_filt <- nom_exon_cc_sumstats_all %>% 
     dplyr::filter(variant == ss_oi$variant, molecular_trait_object_id == ss_oi$gene_id) %>% 
     dplyr::filter(rsid == rsid[1]) %>% # if variant has more than one rsid keep only the first unique rsid 
     dplyr::mutate(exon_end = as.numeric(gsub(pattern = ".*\\_", replacement = "", x = molecular_trait_id))) %>% 
@@ -347,23 +429,31 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::mutate(interval = ci.value * se) %>% 
     dplyr::mutate(p_fdr = p.adjust(pvalue, method = "fdr"))
   
+  # Generate the output path 
+  signal_name <- paste0(gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "___", ss_oi$variant)
+  path_plt = file.path(output_dir, signal_name)
+  if (!dir.exists(path_plt)){
+    dir.create(path_plt, recursive = TRUE)
+  }
+
   if (nrow(nom_exon_cc_sumstats_filt) == 0) {
     message("Weirdly there are no exon summary statistics for this credible set: GENE_ID:", ss_oi$gene_id, ", Variant:", ss_oi$variant )
     next
   }
-  
+
   nom_exon_granges <- list()
-  nom_exon_granges_cc <- list()
   nom_exon_granges[[paste0("GENE:",ss_oi$gene_name)]] = GenomicRanges::GRanges(
     seqnames = nom_exon_cc_sumstats_filt$chromosome,
     ranges = IRanges::IRanges(start = nom_exon_cc_sumstats_filt$exon_start, end = nom_exon_cc_sumstats_filt$exon_end),
     strand = ifelse(test = ss_oi$strand == 1, yes = "+", no = "-"),
     mcols = data.frame(exon_id = nom_exon_cc_sumstats_filt$molecular_trait_id, 
-                       gene_id = nom_exon_cc_sumstats_filt$gene_id))
+                      gene_id = nom_exon_cc_sumstats_filt$gene_id))
   
   exons_to_plot <- nom_exon_granges
   exon_cdss_to_plot <- list()
-  
+
+  start_time <- time_here(prev_time = start_time, message_text = " >> prepared nom_exon_cc_sumstats_filt in: ")
+
   
   if (!is.null(mane_transcript_gene_map_file)) {
     MANE_transcript_oi <- mane_transcript_gene_map %>% dplyr::filter(gene_id %in% ss_oi$gene_id) %>% dplyr::pull(transcript_id)
@@ -377,21 +467,37 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   
   plot_rel_height = 3
   
-  message(" ## Preparing plot data")
-  coverage_data_list = wiggleplotr::extractCoverageData(exons = exons_to_plot, 
+  message(" ## Extracting coverage data")
+  coverage_data_list = tryCatch(wiggleplotr::extractCoverageData(exons = exons_to_plot, 
                                                         cdss = exon_cdss_to_plot, 
                                                         plot_fraction = 0.2,
-                                                        track_data = track_data_study)
+                                                        track_data = track_data_study), 
+  error = function(e) {
+    message(" ## Problem with generating coverage_data wiggleplotr")
+    message(e)
+  })
+
+  if (!exists("coverage_data_list")) {
+    message(" ERROR: !exists")
+    next
+  }
+  if (all(is.na(coverage_data_list)) | length(coverage_data_list) == 0) {
+    message(" ERROR: is.na(coverage_data_list) | length(coverage_data_list)")
+    next
+  }
   
+  message(" ## Prepare transcript structure for plotting")
   tx_structure_df = prepareTranscriptStructureForPlotting(exon_ranges = coverage_data_list$tx_annotations$exon_ranges, 
                                                           cds_ranges = coverage_data_list$tx_annotations$cds_ranges, 
                                                           transcript_annotations = coverage_data_list$plotting_annotations)
   
+  message(" ## Generate coverage data plots (wiggleplotr)")
   wiggle_plots <- wiggleplotr::plotCoverageData(coverage_data_list, alpha = 1, 
                                                 fill_palette = wiggleplotr::getGenotypePalette(), 
                                                 coverage_type = "line", return_subplots_list = TRUE, 
                                                 show_legend = TRUE)
   
+  start_time <- time_here(prev_time = start_time, message_text = " >> generated wiggleplots in: ")
   coverage_plot <- wiggle_plots$coverage_plot
   exon_plot <- wiggle_plots$tx_structure
   
@@ -406,6 +512,10 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     merged_plot <- cowplot::plot_grid(coverage_plot, exon_plot , align = "v", axis = "lr", rel_heights = c(3, plot_rel_height), ncol = 1)
   }
   
+  start_time <- time_here(prev_time = start_time, message_text = " >> until merged plots ready: ")
+  
+  message(" ## Save the coverage plot")
+
   filename_plt = paste0("cov_plot_", signal_name,".pdf")
   ggplot2::ggsave(path = path_plt, filename = filename_plt, plot = merged_plot, device = "pdf", width = 10, height = 8)
   message(" ## Saved: ", filename_plt)
@@ -413,7 +523,7 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   # permute the rows so that it becomes anonymous
   coverage_data_list$coverage_df <- coverage_data_list$coverage_df[sample(nrow(coverage_data_list$coverage_df)),]
   
-  message(" ## Prepare box plot data")
+  message(" ## Prepare boxplot data")
   # BOXPLOTS START HERE
   norm_exp_df_oi <- norm_exp_df %>% dplyr::filter(phenotype_id %in% ss_oi$molecular_trait_id)
   norm_exp_df_oi <- tibble::column_to_rownames(.data = norm_exp_df_oi,var = "phenotype_id")
@@ -434,11 +544,8 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
     dplyr::left_join(track_data_study_box, by = "sample_id") %>% 
     dplyr::mutate(is_significant = tx_id == ss_oi$molecular_trait_id)
   
-  message(" ## Reading nominal summary stats with seqminer")
-  nom_cc_sumstats <- seqminer::tabix.read.table(nominal_sumstats_path, variant_regions_vcf$region) 
-  colnames(nom_cc_sumstats) <- sumstat_colnames
-  
-  nom_cc_sumstats <- nom_cc_sumstats %>% 
+  message(" ## Filter nominal summstats")
+  nom_cc_sumstats <- nom_cc_sumstats_all %>% 
     dplyr::filter(variant %in% variant_regions_vcf$variant)
   
   # Keep only 1 rsid per variant per molecular_trait_id
@@ -474,6 +581,7 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   filename_plt_box_facet = paste0("box_facet_plot_", signal_name,".pdf")
   ggplot2::ggsave(path = path_plt, filename = filename_plt_box_facet, plot = boxplot_facet, device = "pdf", width = 6, height = 6)
   
+  start_time <- time_here(prev_time = start_time, message_text = " >> until boxplot ready: ")
   track_data_study_box_wrap_for_RDS <- track_data_study_box_wrap %>%
     dplyr::select(genotype_text, norm_exp, is_significant, tx_id, pvalue, beta, se, snp_id, maf)
   
@@ -525,4 +633,5 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
       compression = "gzip")
   unlink("plot_data_tsv", recursive = TRUE)
   # setwd(prev_wd)
+  start_time <- time_here(prev_time = start_time, message_text = " >> saving the plot data took: ")
 }

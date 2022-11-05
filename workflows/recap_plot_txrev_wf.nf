@@ -14,14 +14,17 @@ Channel
     .set { txrev_gtf_file_ch }
 
 include { generate_recap_plot_txrev } from  '../modules/generate_plots'
+include { split_into_batches } from  '../modules/utils'
 
 workflow recap_plot_txrev {
     take: 
     study_tsv_inputs_ch
     
     main:
+    split_into_batches(study_tsv_inputs_ch)
+
     generate_recap_plot_txrev(
-        study_tsv_inputs_ch,
+        split_into_batches.out.study_tsv_inputs_ch.combine(split_into_batches.out.susie_batches.transpose(), by:[0,1,2]),
         mane_transcript_gene_map_ch.collect(),
         mane_gtf_file_ch.collect(),
         txrev_gtf_file_ch.collect()

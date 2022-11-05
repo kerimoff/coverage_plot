@@ -4,5 +4,6 @@ slurm*
 results*
 .nextflow*
 work
+work_old
 singularity_img/
 vcfs/

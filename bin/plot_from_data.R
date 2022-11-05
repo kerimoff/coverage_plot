@@ -218,10 +218,10 @@ prepareTranscriptStructureForPlotting <- function(exon_ranges, cds_ranges, trans
 #Debugging
 if (FALSE) {
   opt = list()
-  opt$r = "/Users/kerimov/Work/temp_files/debug/new/plots_sf/Alasoo_2018_macrophage_IFNg_txrev/ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523/plot_data_ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523.Rds"
-  opt$t = "/Users/kerimov/Work/temp_files/debug/new/plots_sf/Alasoo_2018_macrophage_IFNg_txrev/ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523/plot_data_ENSG00000051523.grp_1.contained.ENST00000562209&chr16_88647093_A_G&ENSG00000051523.tar.gz"
-  opt$o = "/Users/kerimov/Work/temp_files/debug/new/plots_sf/plots_from_data/txrev_tar"
-  opt$individual_boxplots = TRUE
+  opt$r = "/Users/kerimov/Work/temp_files/debug/generate_from_plot_data/ENSG00000087088.21_19_48955853_48956197___chr19_48955847_A_G/plot_data_ENSG00000087088.21_19_48955853_48956197___chr19_48955847_A_G.Rds"
+  opt$t = "/Users/kerimov/Work/temp_files/debug/generate_from_plot_data/ENSG00000087088.21_19_48955853_48956197___chr19_48955847_A_G/plot_data_ENSG00000087088.21_19_48955853_48956197___chr19_48955847_A_G.tar.gz"
+  opt$o = "/Users/kerimov/Work/temp_files/debug/generate_from_plot_data/plots_generated"
+  opt$individual_boxplots = FALSE
 }
 
 rds_file_path = opt$r
@@ -355,7 +355,7 @@ if (box_plot_wrap %>% hasName("tx_id")) {
 box_plot_wrap <- box_plot_wrap %>% dplyr::mutate(intron_id_with_stats = paste0(intron_id, "\n", stats_text))
 
 boxplot_facet <- ggplot2::ggplot(box_plot_wrap, 
-                                 ggplot2::aes(x = genotype_text, 
+                                 ggplot2::aes(x = genotype_text %>% as.factor(), 
                                               y = norm_exp, 
                                               color = is_significant, 
                                               group = genotype_text)) + 
