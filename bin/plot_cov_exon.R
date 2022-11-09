@@ -392,6 +392,9 @@ if (study_name == "Lepik_2017") {
   
   # Generate the output path 
   signal_name <- paste0(gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "___", ss_oi$variant)
+  if (stringr::str_length(signal_name) > 150) {
+    signal_name <-paste0(gsub(pattern = ":", replacement = "_", x = ss_oi$molecular_trait_id), "___", stringr::str_length(signal_name), "_long_var", "___", ss_oi$gene_id)
+  }
   path_plt = file.path(output_dir, signal_name)
   if (!dir.exists(path_plt)){
     dir.create(path_plt, recursive = TRUE)
@@ -499,7 +502,7 @@ if (study_name == "Lepik_2017") {
   }
   
   filename_plt = paste0("cov_plot_", signal_name,".pdf")
-  ggplot2::ggsave(path = path_plt, filename = filename_plt, plot = merged_plot, device = "pdf", width = 10, height = 8)
+  ggplot2::ggsave(path = path_plt, filename = filename_plt, plot = merged_plot, device = "pdf", width = 10, height = 8, limitsize = FALSE)
   message(" ## Saved: ", filename_plt)
 
   # permute the rows so that it becomes anonymous
@@ -563,7 +566,7 @@ if (study_name == "Lepik_2017") {
   
   filename_plt_box_facet = paste0("box_facet_plot_", signal_name,".pdf")
   save_width_height = round(sqrt(length(exon_quant_pheno_ids$phenotype_id))*3)
-  ggplot2::ggsave(path = path_plt, filename = filename_plt_box_facet, plot = boxplot_facet, device = "pdf", width = save_width_height, height = save_width_height)
+  ggplot2::ggsave(path = path_plt, filename = filename_plt_box_facet, plot = boxplot_facet, device = "pdf", width = save_width_height, height = save_width_height, limitsize = FALSE)
   
   track_data_study_box_wrap_for_RDS <- track_data_study_box_wrap %>%
     dplyr::select(genotype_text, norm_exp, is_significant, tx_id, pvalue, beta, se, snp_id, maf)
@@ -643,6 +646,6 @@ if (study_name == "Lepik_2017") {
       ggplot2::theme(strip.text.x = ggplot2::element_text(colour = "grey10"), strip.background = ggplot2::element_rect(fill = "grey85"))
     
     filename_plt_box = paste0("box_plot_", gsub(pattern = ":", replacement = "_", x = tx_id_sel), "&", ss_oi$variant, "&", ss_oi$gene_id,".pdf")
-    ggplot2::ggsave(path = path_plt, filename = filename_plt_box, plot = box_plot, device = "pdf", width = 7, height = 5)
+    ggplot2::ggsave(path = path_plt, filename = filename_plt_box, plot = box_plot, device = "pdf", width = 7, height = 5, limitsize = FALSE)
   }
 }
