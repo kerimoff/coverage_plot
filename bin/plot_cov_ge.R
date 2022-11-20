@@ -435,22 +435,19 @@ for (index in 1:nrow(highest_pip_vars_per_cs)) {
   if (!dir.exists(path_plt)){
     dir.create(path_plt, recursive = TRUE)
   }
-
-  if (nrow(nom_exon_cc_sumstats_filt) == 0) {
-    message("Weirdly there are no exon summary statistics for this credible set: GENE_ID:", ss_oi$gene_id, ", Variant:", ss_oi$variant )
-    next
-  }
-
-  nom_exon_granges <- list()
-  nom_exon_granges[[paste0("GENE:",ss_oi$gene_name)]] = GenomicRanges::GRanges(
-    seqnames = nom_exon_cc_sumstats_filt$chromosome,
-    ranges = IRanges::IRanges(start = nom_exon_cc_sumstats_filt$exon_start, end = nom_exon_cc_sumstats_filt$exon_end),
-    strand = ifelse(test = ss_oi$strand == 1, yes = "+", no = "-"),
-    mcols = data.frame(exon_id = nom_exon_cc_sumstats_filt$molecular_trait_id, 
-                      gene_id = nom_exon_cc_sumstats_filt$gene_id))
-  
-  exons_to_plot <- nom_exon_granges
+  exons_to_plot <- list()
   exon_cdss_to_plot <- list()
+  if (nrow(nom_exon_cc_sumstats_filt) > 0) {
+    nom_exon_granges <- list()
+    nom_exon_granges[[paste0("GENE:",ss_oi$gene_name)]] = GenomicRanges::GRanges(
+      seqnames = nom_exon_cc_sumstats_filt$chromosome,
+      ranges = IRanges::IRanges(start = nom_exon_cc_sumstats_filt$exon_start, end = nom_exon_cc_sumstats_filt$exon_end),
+      strand = ifelse(test = ss_oi$strand == 1, yes = "+", no = "-"),
+      mcols = data.frame(exon_id = nom_exon_cc_sumstats_filt$molecular_trait_id, 
+                        gene_id = nom_exon_cc_sumstats_filt$gene_id))
+    
+    exons_to_plot <- append(exons_to_plot, nom_exon_granges)
+  }  
 
   start_time <- time_here(prev_time = start_time, message_text = " >> prepared nom_exon_cc_sumstats_filt in: ")
 
